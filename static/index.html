@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Mimi ミミ</title>
+<style>
+  :root {
+    --bg: #0b0e1a;
+    --bg2: #111527;
+    --panel: #161b30;
+    --panel2: #1b2140;
+    --line: #262d52;
+    --ink: #e8eaf6;
+    --dim: #8890b5;
+    --violet: #8b7cf8;
+    --cyan: #4dd8e6;
+    --glow: rgba(139, 124, 248, .35);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "Hiragino Sans", "Segoe UI", sans-serif;
+    background:
+      radial-gradient(1200px 600px at 85% -10%, rgba(139,124,248,.14), transparent 60%),
+      radial-gradient(900px 500px at -10% 110%, rgba(77,216,230,.10), transparent 60%),
+      var(--bg);
+    color: var(--ink);
+    height: 100vh; display: flex; overflow: hidden;
+    -webkit-user-select: none; user-select: none;
+  }
+  input, textarea, .msg, pre, p { -webkit-user-select: text; user-select: text; }
+
+  /* ---------- sidebar ---------- */
+  aside {
+    width: 250px; flex-shrink: 0; padding: 22px 16px;
+    background: linear-gradient(180deg, var(--bg2), var(--bg));
+    border-right: 1px solid var(--line);
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .avatar-wrap { text-align: center; margin-bottom: 14px; }
+  .avatar {
+    width: 108px; height: 108px; border-radius: 50%; object-fit: cover; object-position: top;
+    border: 3px solid var(--violet);
+    box-shadow: 0 0 24px var(--glow), 0 0 60px rgba(77,216,230,.12);
+  }
+  .avatar-wrap h1 { font-size: 20px; margin-top: 10px; letter-spacing: .5px; }
+  .avatar-wrap .jp { color: var(--violet); font-size: 12px; letter-spacing: 4px; }
+  .status { font-size: 11px; color: var(--dim); margin-top: 4px; }
+  .status .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+    background: #58e28b; box-shadow: 0 0 8px #58e28b; margin-right: 5px; }
+  .avatar.listening { animation: breathe 2.6s ease-in-out infinite; }
+  @keyframes breathe {
+    50% { box-shadow: 0 0 34px var(--glow), 0 0 80px rgba(77,216,230,.22); }
+  }
+
+  /* always-listening toggle */
+  .awake-row { display: flex; align-items: center; justify-content: center; gap: 8px;
+    margin: 10px 0 6px; font-size: 12px; color: var(--dim); }
+  .switch { position: relative; width: 36px; height: 20px; flex-shrink: 0; }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .switch span {
+    position: absolute; inset: 0; border-radius: 20px; background: var(--panel2);
+    border: 1px solid var(--line); cursor: pointer; transition: all .2s;
+  }
+  .switch span::before {
+    content: ""; position: absolute; width: 14px; height: 14px; border-radius: 50%;
+    left: 2px; top: 2px; background: var(--dim); transition: all .2s;
+  }
+  .switch input:checked + span { background: linear-gradient(135deg, var(--violet), #6a5ae0);
+    border-color: transparent; }
+  .switch input:checked + span::before { left: 18px; background: #fff; }
+
+  nav button {
+    width: 100%; text-align: left; padding: 11px 14px; margin-top: 2px;
+    background: none; border: 1px solid transparent; border-radius: 10px;
+    color: var(--dim); font-size: 14px; cursor: pointer; transition: all .15s;
+    font-family: inherit;
+  }
+  nav button:hover { color: var(--ink); background: var(--panel); }
+  nav button.active {
+    color: var(--ink); background: var(--panel2); border-color: var(--line);
+    box-shadow: inset 3px 0 0 var(--violet);
+  }
+  .credit { margin-top: auto; font-size: 10px; color: #4a5178; text-align: center; }
+
+  /* ---------- main ---------- */
+  main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  section { flex: 1; display: none; flex-direction: column; overflow: hidden; padding: 26px 34px; }
+  section.active { display: flex; }
+  h2 { font-size: 17px; margin-bottom: 4px; }
+  .sub { color: var(--dim); font-size: 13px; margin-bottom: 18px; }
+  .scroll { flex: 1; overflow-y: auto; padding-right: 6px; }
+  .scroll::-webkit-scrollbar { width: 8px; }
+  .scroll::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
+
+  .card {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+    padding: 18px 20px; margin-bottom: 14px; transition: border-color .15s, transform .15s;
+  }
+  .card:hover { border-color: #333c6e; transform: translateY(-1px); }
+  .card h3 { font-size: 13px; color: var(--violet); margin-bottom: 8px; letter-spacing: .5px; }
+  .card p, .card pre { font-size: 14px; line-height: 1.65; color: var(--ink); }
+  pre { white-space: pre-wrap; font-family: inherit; }
+
+  input[type=text], input[type=password], textarea {
+    width: 100%; background: var(--bg2); color: var(--ink);
+    border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px;
+    font-size: 14px; font-family: inherit; outline: none; transition: border .15s;
+  }
+  input:focus, textarea:focus { border-color: var(--violet); box-shadow: 0 0 0 3px var(--glow); }
+  textarea { resize: vertical; min-height: 130px; }
+
+  .btn {
+    background: linear-gradient(135deg, var(--violet), #6a5ae0);
+    color: #fff; border: none; border-radius: 10px; padding: 11px 20px;
+    font-size: 14px; font-weight: 600; cursor: pointer; transition: all .15s;
+    font-family: inherit;
+  }
+  .btn:hover { box-shadow: 0 4px 18px var(--glow); transform: translateY(-1px); }
+  .btn:disabled { opacity: .45; cursor: default; transform: none; box-shadow: none; }
+  .btn.ghost { background: var(--panel2); border: 1px solid var(--line); color: var(--ink); font-weight: 500; }
+  .row { display: flex; gap: 10px; }
+
+  /* ---------- chat ---------- */
+  #chatlog { display: flex; flex-direction: column; gap: 12px; }
+  .msg { max-width: 72%; padding: 12px 16px; border-radius: 16px; font-size: 14px; line-height: 1.55;
+    animation: rise .22s ease-out; }
+  @keyframes rise { from { opacity: 0; transform: translateY(8px); } }
+  .msg.you { align-self: flex-end; background: linear-gradient(135deg, #6a5ae0, var(--violet)); border-bottom-right-radius: 4px; }
+  .msg.mimi { align-self: flex-start; background: var(--panel2); border: 1px solid var(--line); border-bottom-left-radius: 4px; }
+  .msg.mimi::before { content: "ミミ"; display: block; font-size: 10px; color: var(--violet); margin-bottom: 4px; letter-spacing: 2px; }
+  .msg.thinking { color: var(--dim); font-style: italic; }
+  #chatbar { display: flex; gap: 10px; padding-top: 16px; }
+  #chatbar input { flex: 1; }
+  .micbtn { width: 46px; flex-shrink: 0; font-size: 18px; }
+  .micbtn.rec { background: linear-gradient(135deg, #e05a7a, #c04); animation: pulse 1s infinite; }
+  @keyframes pulse { 50% { box-shadow: 0 0 22px rgba(224,90,122,.6); } }
+
+  .empty { color: var(--dim); font-size: 13px; text-align: center; padding: 40px 0; }
+
+  /* ---------- onboarding modal ---------- */
+  #onboard {
+    position: fixed; inset: 0; background: rgba(6,8,18,.85); backdrop-filter: blur(6px);
+    display: flex; align-items: center; justify-content: center; z-index: 50;
+  }
+  #onboard .box {
+    width: 420px; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 18px; padding: 34px; text-align: center;
+    box-shadow: 0 10px 60px rgba(0,0,0,.6), 0 0 40px var(--glow);
+  }
+  #onboard img { width: 92px; height: 92px; border-radius: 50%; object-fit: cover; object-position: top;
+    border: 3px solid var(--violet); box-shadow: 0 0 20px var(--glow); }
+  #onboard h2 { margin: 14px 0 6px; }
+  #onboard p { color: var(--dim); font-size: 13px; margin-bottom: 18px; line-height: 1.5; }
+  #onboard input[type=text], #onboard input[type=password] { text-align: center; margin-bottom: 12px; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<!-- login / first-run register (blocks the app until unlocked) -->
+<div id="onboard" class="hidden">
+  <div class="box">
+    <img src="mimi.png" alt="Mimi">
+    <h2 id="auth-title">Hi, I'm Mimi <span style="color:var(--violet)">ミミ</span></h2>
+    <p id="auth-sub">Let's set you up. I'll watch your day and keep track of what you're into.</p>
+    <div id="auth-register">
+      <input type="text" id="reg-name" placeholder="your name">
+      <input type="password" id="reg-pass" placeholder="pick a password"
+             onkeydown="if(event.key==='Enter')doRegister()">
+    </div>
+    <div id="auth-login" class="hidden">
+      <input type="password" id="log-pass" placeholder="password" autocomplete="current-password"
+             onkeydown="if(event.key==='Enter')doLogin()">
+      <p id="log-err" style="color:#e05a7a;font-size:12px;margin:0 0 8px"></p>
+    </div>
+    <button class="btn" style="width:100%;margin-top:4px" id="auth-btn" onclick="doRegister()">Let's go</button>
+  </div>
+</div>
+
+<aside>
+  <div class="avatar-wrap">
+    <img class="avatar" src="mimi.png" alt="Mimi">
+    <h1>Mimi</h1>
+    <div class="jp">ミミ</div>
+    <div class="status"><span class="dot"></span>online &amp; learning</div>
+    <div class="awake-row">
+      <label class="switch"><input type="checkbox" id="awake" checked
+        onchange="toggleAwake(this.checked)"><span></span></label>
+      always listening
+    </div>
+    <div class="awake-row" style="margin-top:0">
+      <label class="switch"><input type="checkbox" id="speakout" checked
+        onchange="api('set_speak', this.checked)"><span></span></label>
+      speak replies
+    </div>
+  </div>
+  <nav>
+    <button class="active" data-sec="chat" onclick="show(this)">💬 &nbsp;Chat</button>
+    <button data-sec="capture" onclick="show(this)">🌐 &nbsp;Capture page</button>
+    <button data-sec="notes" onclick="show(this)">📝 &nbsp;Meeting notes</button>
+    <button data-sec="forme" onclick="show(this)">✨ &nbsp;For me</button>
+    <button data-sec="settings" onclick="show(this)">⚙️ &nbsp;Settings</button>
+  </nav>
+  <div class="credit">avatar art: シュガオ (@haru_sugar02)</div>
+</aside>
+
+<main>
+
+  <!-- CHAT -->
+  <section id="chat" class="active">
+    <h2>Talk to Mimi</h2>
+    <div class="sub">She's always listening — just say "hey mimi…". Or type, or push the mic.
+      Try: "summarize this" · "search rust tutorials" then "open the second result" ·
+      "remind me in 20 minutes to stretch" · "launch spotify"</div>
+    <div class="scroll" id="chatscroll"><div id="chatlog"></div></div>
+    <div id="chatbar">
+      <button class="btn ghost micbtn" id="mic" onclick="micAsk()" title="speak">🎙️</button>
+      <input type="text" id="q" placeholder="ask me anything… or 'open youtube' / 'search rust tutorials'"
+             onkeydown="if(event.key==='Enter')typedAsk()">
+      <button class="btn" onclick="typedAsk()">Send</button>
+    </div>
+  </section>
+
+  <!-- CAPTURE -->
+  <section id="capture">
+    <h2>Capture a page</h2>
+    <div class="sub">Paste a URL — I'll read it, summarize it, and remember that you cared about it.</div>
+    <div class="row" style="margin-bottom:16px">
+      <input type="text" id="url" placeholder="https://…"
+             onkeydown="if(event.key==='Enter')capture()">
+      <button class="btn" id="capbtn" onclick="capture()">Capture</button>
+    </div>
+    <div class="scroll" id="capout"></div>
+  </section>
+
+  <!-- MEETING NOTES -->
+  <section id="notes">
+    <h2>Meeting notes</h2>
+    <div class="sub">Paste a transcript and I'll write the minutes — summary, decisions, action items with owners.
+      Notes from "take notes of this" land here too.</div>
+    <textarea id="transcript" placeholder="paste the meeting transcript here…"></textarea>
+    <div class="row" style="margin:12px 0 16px">
+      <button class="btn" id="notesbtn" onclick="makeNotes()">Write the minutes</button>
+    </div>
+    <div class="scroll" id="notesout"></div>
+  </section>
+
+  <!-- FOR ME -->
+  <section id="forme">
+    <h2>For me</h2>
+    <div class="sub">What Mimi has learnt about you, and her daily notes.</div>
+    <div class="scroll" id="formeout"></div>
+  </section>
+
+  <!-- SETTINGS -->
+  <section id="settings">
+    <h2>Settings</h2>
+    <div class="sub">Everything stays on this Mac — nothing is ever sent anywhere.</div>
+    <div class="card">
+      <h3>VOICE <span style="color:var(--dim);font-weight:400">— neural, runs offline</span></h3>
+      <select id="set-voice" onchange="api('set_voice', this.value)"
+        style="width:100%;background:var(--bg2);color:var(--ink);border:1px solid var(--line);
+               border-radius:10px;padding:12px 14px;font-size:14px;font-family:inherit;outline:none">
+      </select>
+      <h3 style="margin-top:16px">DAILY REFLECTION</h3>
+      <p style="color:var(--dim);font-size:13px;margin-bottom:12px">
+        Mimi looks back over your day and writes a note about it, saved to the "For me" tab.</p>
+      <button class="btn ghost" id="digestbtn" onclick="reflectNow()">Reflect on my day now</button>
+      <p id="setmsg" style="color:var(--cyan);font-size:13px;margin-top:10px"></p>
+    </div>
+  </section>
+
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+// Native bridge: every call goes straight into app.py's Api class. No server.
+const api = (name, arg) =>
+  arg === undefined ? window.pywebview.api[name]() : window.pywebview.api[name](arg);
+
+/* ---------- nav ---------- */
+function show(btn) {
+  document.querySelectorAll("nav button").forEach(b => b.classList.remove("active"));
+  document.querySelectorAll("section").forEach(s => s.classList.remove("active"));
+  btn.classList.add("active");
+  $(btn.dataset.sec).classList.add("active");
+  if (btn.dataset.sec === "forme") loadForMe();
+  if (btn.dataset.sec === "notes") loadNotes();
+  if (btn.dataset.sec === "settings") loadSettings();
+}
+
+/* ---------- chat ---------- */
+// called from Python too (the always-awake loop pushes what it hears/says here)
+function pushMsg(cls, text) { bubble(cls === "you" ? "you" : "mimi", text); }
+async function toggleAwake(on) {
+  await api("set_awake", on);
+  document.querySelector(".avatar").classList.toggle("listening", on);
+}
+function bubble(cls, text) {
+  const d = document.createElement("div");
+  d.className = "msg " + cls;
+  d.textContent = text;
+  $("chatlog").appendChild(d);
+  $("chatscroll").scrollTop = $("chatscroll").scrollHeight;
+  return d;
+}
+async function ask(question) {
+  bubble("you", question);
+  const t = bubble("mimi thinking", "thinking…");
+  try {
+    const r = await api("ask", {question, voice: true});
+    t.textContent = r.reply || r.error;
+  } catch { t.textContent = "something broke — check the terminal."; }
+  t.classList.remove("thinking");
+}
+function typedAsk() {
+  const q = $("q").value.trim();
+  if (!q) return;
+  $("q").value = "";
+  ask(q);
+}
+async function micAsk() {
+  const m = $("mic");
+  m.classList.add("rec"); m.disabled = true;
+  try {
+    const r = await api("listen");
+    if (r.text) ask(r.text);
+    else bubble("mimi", "I didn't catch that — try again?");
+  } finally { m.classList.remove("rec"); m.disabled = false; }
+}
+
+/* ---------- capture ---------- */
+async function capture() {
+  const url = $("url").value.trim();
+  if (!url) return;
+  $("capbtn").disabled = true;
+  $("capout").innerHTML = '<div class="empty">reading the page…</div>';
+  const r = await api("capture", url);
+  $("capbtn").disabled = false;
+  if (r.error) { $("capout").innerHTML = `<div class="empty">${r.error}</div>`; return; }
+  $("capout").innerHTML = `
+    <div class="card"><h3>${(r.title || "PAGE").toUpperCase()}</h3>
+      <p>${r.summary}</p>
+      <p style="margin-top:10px;color:var(--dim);font-size:13px">
+        topics: ${(r.topics || []).join(" · ")}</p>
+      <p style="margin-top:6px;color:var(--cyan);font-size:13px">
+        why you cared: ${r.inferred_interest}</p>
+    </div>`;
+}
+
+/* ---------- meeting notes ---------- */
+async function makeNotes() {
+  const transcript = $("transcript").value.trim();
+  if (!transcript) return;
+  $("notesbtn").disabled = true;
+  $("notesout").innerHTML = '<div class="empty">writing the minutes…</div>';
+  const r = await api("notes", transcript);
+  $("notesbtn").disabled = false;
+  $("notesout").innerHTML = r.error
+    ? `<div class="empty">${r.error}</div>`
+    : `<div class="card"><h3>MINUTES — saved to ${r.file}</h3><pre>${r.minutes}</pre></div>`;
+}
+async function loadNotes() {
+  const items = await api("list_notes");
+  $("notesout").innerHTML = items.length
+    ? items.map(n => `<div class="card"><h3>${n.name.toUpperCase()}</h3><pre>${n.text}</pre></div>`).join("")
+    : '<div class="empty">no meeting notes yet</div>';
+}
+
+/* ---------- for me ---------- */
+async function loadForMe() {
+  const r = await api("forme");
+  let html = "";
+  html += `<div class="card"><h3>WHO YOU ARE (what I've learnt so far)</h3>
+    ${r.profile ? `<p>${r.profile}</p>`
+                : `<p class="empty">I don't know you yet — use me for a day and I'll start figuring you out.</p>`}
+  </div>`;
+  html += `<div class="card"><h3>TODAY</h3><p>${r.today_events} things journaled so far today.
+    They become your next daily note.</p></div>`;
+  for (const d of r.digests)
+    html += `<div class="card"><h3>${d.date}</h3><pre>${d.text}</pre></div>`;
+  $("formeout").innerHTML = html;
+}
+
+async function loadSettings() {
+  const s = await api("get_settings");
+  const voices = await api("voices");
+  $("set-voice").innerHTML = voices.map(v =>
+    `<option ${v === s.voice ? "selected" : ""}>${v}</option>`).join("");
+}
+async function reflectNow() {
+  $("digestbtn").disabled = true;
+  $("setmsg").textContent = "reflecting on your day…";
+  const r = await api("reflect_now");
+  $("digestbtn").disabled = false;
+  $("setmsg").textContent = r.note
+    ? "done — read it in the For me tab"
+    : "nothing to reflect on yet — go do things first";
+}
+/* ---------- login / register ---------- */
+function showAuth(mode, name) {
+  $("onboard").classList.remove("hidden");
+  const reg = mode === "register";
+  $("auth-register").classList.toggle("hidden", !reg);
+  $("auth-login").classList.toggle("hidden", reg);
+  $("auth-btn").textContent = reg ? "Let's go" : "Unlock";
+  $("auth-btn").onclick = reg ? doRegister : doLogin;
+  if (!reg) {
+    $("auth-title").innerHTML = `Welcome back${name ? ", " + name : ""} <span style="color:var(--violet)">ミミ</span>`;
+    $("auth-sub").textContent = "Enter your password to wake me up.";
+    setTimeout(() => $("log-pass").focus(), 100);
+  }
+}
+async function doRegister() {
+  const password = $("reg-pass").value;
+  if (!password) { $("reg-pass").focus(); return; }
+  const r = await api("register", {name: $("reg-name").value, password});
+  if (r.ok) $("onboard").classList.add("hidden");
+}
+async function doLogin() {
+  const r = await api("login", {password: $("log-pass").value});
+  if (r.ok) { $("onboard").classList.add("hidden"); }
+  else { $("log-err").textContent = "that's not it — try again"; $("log-pass").value = ""; }
+}
+
+/* ---------- boot (wait for the native bridge) ---------- */
+window.addEventListener("pywebviewready", async () => {
+  const s = await api("get_settings");
+  if (!s.user) showAuth("register");
+  else showAuth("login", s.user);
+  $("awake").checked = !!s.awake;
+  $("speakout").checked = !!s.speak;
+  document.querySelector(".avatar").classList.toggle("listening", !!s.awake);
+});
+</script>
+</body>
+</html>
