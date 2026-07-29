@@ -35,19 +35,43 @@ SIZES = {
 }
 
 
-def square_crop(image, focus=0.5):
+def square_crop(image, focus=0.5, zoom=1.0):
     """Crop to a square. `focus` is where vertically to centre it, 0=top.
 
     Portrait character art puts the face near the top, so a plain centre crop
     usually decapitates it.
+
+    `zoom` below 1 takes a tighter square. This matters more than resolution
+    does: the Dock renders at 64-128pt, so a crop that includes hair, shoulders
+    and torso leaves the face only ~25px and it turns to mush. Filling the frame
+    with the head costs some upscale and wins far more legibility than it loses.
     """
     width, height = image.size
-    side = min(width, height)
-    if height > width:
-        top = int((height - side) * focus)
-        return image.crop((0, top, side, top + side))
+    side = int(min(width, height) * zoom)
     left = (width - side) // 2
-    return image.crop((left, 0, left + side, side))
+    top = int((height - side) * focus)
+    top = max(0, min(top, height - side))
+    return image.crop((left, top, left + side, top + side))
+
+
+def sharpen_for(image, size):
+    """Unsharp mask, scaled to the target size.
+
+    Any high-quality downscale is slightly soft by construction -- it is an
+    average of neighbouring pixels. Sharpening afterwards is what separates an
+    icon that reads crisply at 32px from one that looks like a smudge. Small
+    sizes need proportionally more, and a smaller radius.
+    """
+    if size >= 512:
+        radius, amount = 1.6, 90
+    elif size >= 256:
+        radius, amount = 1.1, 120
+    elif size >= 64:
+        radius, amount = 0.8, 165
+    else:
+        radius, amount = 0.5, 190
+    return image.filter(
+        ImageFilter.UnsharpMask(radius=radius, percent=amount, threshold=2))
 
 
 def rounded_mask(size, radius):
@@ -61,8 +85,11 @@ def rounded_mask(size, radius):
 
 def build(source_path, out_dir):
     source = Image.open(source_path).convert("RGB")
-    # Bias upward: the face is in the top third of character art.
-    art = square_crop(source, focus=0.06).resize((ART, ART), Image.LANCZOS)
+    # Bias upward and crop in: the face is in the top third of character art,
+    # and it needs to fill the frame to survive being drawn at 32px.
+    art = square_crop(source, focus=0.05, zoom=0.82)
+    art = art.resize((ART, ART), Image.LANCZOS)
+    art = art.filter(ImageFilter.UnsharpMask(radius=2.0, percent=70, threshold=3))
 
     art.putalpha(rounded_mask(ART, RADIUS))
 
@@ -80,8 +107,12 @@ def build(source_path, out_dir):
     shutil.rmtree(iconset, ignore_errors=True)
     os.makedirs(iconset)
     for name, size in SIZES.items():
-        canvas.resize((size, size), Image.LANCZOS).save(
-            os.path.join(iconset, name), "PNG")
+        scaled = canvas.resize((size, size), Image.LANCZOS)
+        # Sharpen the colour channels only; running it over alpha would eat
+        # into the rounded corners and leave them ragged.
+        rgb = sharpen_for(scaled.convert("RGB"), size)
+        rgb.putalpha(scaled.split()[3])
+        rgb.save(os.path.join(iconset, name), "PNG")
 
     icns = os.path.join(out_dir, "Mimi.icns")
     subprocess.run(["iconutil", "-c", "icns", iconset, "-o", icns], check=True)
