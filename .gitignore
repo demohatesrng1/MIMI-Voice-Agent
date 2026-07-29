@@ -1,0 +1,41 @@
+# --- build output ------------------------------------------------------------
+build/
+cmake-build-*/
+compile_commands.json
+*.o
+*.a
+*.dylib
+.cache/
+
+# --- models ------------------------------------------------------------------
+# ~1 GB of ONNX and GGML weights. Fetched by scripts/fetch_models.sh instead.
+models/
+voices/*.onnx
+voices/*.onnx.json
+
+# --- python (being retired, kept until the C++ port replaces it) --------------
+venv/
+__pycache__/
+*.pyc
+
+# --- personal data -----------------------------------------------------------
+# config.json holds the account salt and password hash.
+# journal/, digests/, pages/ and profile.md are a record of what the user
+# actually reads and says. None of it belongs in a repo.
+config.json
+profile.md
+journal/
+digests/
+notes/
+pages/
+website_text.txt
+mimi_launch.log
+
+# --- generated test fixtures -------------------------------------------------
+# Audio is regenerated with `say`; the reference scores are checked in because
+# `mimi_wake --compare` needs them.
+testdata/*.wav
+
+# --- macOS -------------------------------------------------------------------
+.DS_Store
+*.icloud
