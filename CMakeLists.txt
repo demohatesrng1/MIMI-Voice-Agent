@@ -120,6 +120,8 @@ add_library(mimi_brain STATIC
   src/brain/shell.cpp
   src/brain/tools.cpp
   src/brain/router.cpp
+  src/brain/journal.cpp
+  src/brain/reflect.cpp
 )
 target_include_directories(mimi_brain PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_link_libraries(mimi_brain PUBLIC mimi_core PRIVATE mimi_httplib)

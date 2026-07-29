@@ -1,90 +1,122 @@
 # Mimi ミミ
 
-A private, fully-offline voice assistant for macOS. Talk to her, and she acts on
-your Mac — opens sites, searches the web, summarizes the page you're reading,
-takes meeting notes, sets reminders, and more. In the background she quietly
-learns what you care about and writes you a daily reflection about it.
+A private voice assistant for macOS, written in C++. She listens for
+「ねえミミ」, answers in Japanese, and acts on your Mac — opens sites, launches
+apps, controls playback, takes screenshots, sets reminders, reads the page
+you're on.
 
-**Nothing ever leaves your machine.** The language model, the speech recognition,
-the text-to-speech, and the memory all run locally.
+**Nothing leaves the machine.** Speech recognition, the language model, speech
+synthesis and the journal all run locally.
 
-## What she can do
+## Why C++
 
-**Talk to her** — she's always listening for "hey mimi", or type in the app. She
-replies in a natural neural voice and remembers the conversation.
+The original was Python. The rewrite is not for its own sake: **whisper.cpp runs
+the whisper encoder on the Metal GPU**, which CTranslate2 (faster-whisper)
+cannot. That is 13–15× realtime transcription on Apple Silicon, against roughly
+1–1.5 s per utterance on CPU.
 
-**Act on your Mac**
-
-| You say… | She… |
-|---|---|
-| "summarize this" / "take notes of this" | reads the browser tab you're on |
-| "search rust tutorials" → "open the second result" | opens the exact result |
-| "open youtube" / "launch spotify" | opens a site / launches an app |
-| "remind me in 20 minutes to stretch" | notification + spoken reminder |
-| "summarize my clipboard" | summarizes what you copied |
-| "what time is it" / "how's my battery" / "take a screenshot" | does it |
-| "find my file model.py" | Spotlight search |
-| anything else | answers as an assistant |
-
-**Learns you** — every couple of minutes she notes the page you're on (locally),
-and the daily reflection turns that into a note about what you were into, plus an
-evolving profile she uses to personalize her answers. All viewable in the "For me"
-tab. Nothing is sent anywhere.
-
-## Stack
-
-- **LLM** — [Ollama](https://ollama.com) running `gemma3n:e4b` (chat) and
-  `nomic-embed-text` (embeddings)
-- **Speech-to-text** — `SpeechRecognition`
-- **Text-to-speech** — [Piper](https://github.com/rhasspy/piper) neural voice, local
-- **App** — a native macOS window via `pywebview` (no browser, no server)
-
-## Architecture
+## How the listening works
 
 ```
-speech.py   voice in (mic) + out (Piper neural TTS)
-model.py    the Ollama brain: chat, extract, embed, reflect
-tools.py    real Mac actions (AppleScript, Spotlight, clipboard, …)
-mimi.py     route(): one place that turns an utterance into an action
-journal.py  a local log of what you do each day
-reflect.py  end-of-day reflection → digest + evolving profile
-app.py      the desktop app: native window + always-listening loop + login
+mic ─▶ ring buffer (30s, lock-free, written from the CoreAudio realtime thread)
+         ├─▶ Silero VAD        32 ms windows, endpointing with hysteresis
+         ├─▶ wake detection    openWakeWord, or a whisper phrase spotter
+         └─▶ pre-roll          500 ms of lookback
+                    │
+                    ▼  utterance captured
+              whisper.cpp (Metal) ─▶ router ─▶ Ollama / Mac controls ─▶ speech
 ```
 
-Both the voice loop and the app window go through the same `route()` in `mimi.py`,
-so typing and talking always behave identically.
+The microphone is opened once and never released mid-conversation, so there is
+no window where she is deaf and no lock for a push-to-talk request to contend
+with. Transcription runs on a second thread, so the audio loop keeps consuming
+frames while she is thinking.
 
-## Setup
+Details that matter and are easy to get wrong:
 
-Requires macOS, Python 3.12, [Ollama](https://ollama.com), and `ffmpeg`
-(`brew install ffmpeg`).
+- **Silero VAD v5 wants 576 samples**, not 512 — 64 samples of carried context
+  plus 512 new. Fed only 512 it returns ≈0 forever and never errors.
+- **openWakeWord wants int16-scaled audio** (±32768, not ±1.0), a `mel/10 + 2`
+  transform, and a `ones((76,32))` seed buffer.
+- Both are checked numerically against the Python reference rather than trusted:
+  `scripts/reference_scores.py` + `mimi_wake --compare` agree to **4.8e-07**.
+
+## Wake word
+
+openWakeWord ships no `hey mimi` model, and its pretrained classifiers are tied
+to the acoustics of their own phrase. So there are two backends:
+
+| Backend | Wake phrase | Trade-off |
+|---|---|---|
+| `PhraseSpotter` (default) | anything | Works today. Transcribes every speech segment to find the phrase. |
+| `OpenWakeWord` | needs a trained `.onnx` | Scores audio acoustically, transcribes nothing until it fires. |
+
+Japanese makes the spotter interesting: whisper writes ミミ as **耳** (kanji for
+"ear", identical pronunciation) far more often than as katakana, so the matcher
+folds homophones — and rejects 「耳が痛い」 by testing for a following case
+particle.
+
+## Build
+
+Requires macOS, CMake ≥ 3.24 and Xcode Command Line Tools.
 
 ```bash
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-
-ollama pull gemma3n:e4b
-ollama pull nomic-embed-text
+brew install cmake ninja onnxruntime qt nlohmann-json
+./scripts/fetch_models.sh          # ~600 MB, gitignored
+cmake -S . -B build -G Ninja -DCMAKE_PREFIX_PATH="$(brew --prefix)"
+cmake --build build
+open build/Mimi.app
 ```
 
-Download the neural voice (not committed — it's ~60 MB):
+For the brain: [Ollama](https://ollama.com) with `ollama pull gemma3n:e4b` and
+`ollama pull nomic-embed-text`, then `ollama serve`.
+
+macOS will ask once for **Microphone** and once for **Automation**. Both are
+required; without the second, controlling other apps fails with error `-1743`.
+
+## Layout
+
+```
+src/audio/    ring buffer, CoreAudio capture, WAV
+src/voice/    VAD, wake word, phrase spotter, whisper, TTS, listener
+src/brain/    Ollama client, Mac controls, router, journal, reflection
+src/ui/       Qt6 window, voice orb, chat view, theme
+src/app/      main
+tools/        one CLI per layer, for testing without the GUI
+```
+
+## Command-line harnesses
+
+Each layer is testable on its own, which is how the bugs above were found:
 
 ```bash
-mkdir -p voices
-curl -L -o voices/aria.onnx \
-  https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/hfc_female/medium/en_US-hfc_female-medium.onnx
-curl -L -o voices/aria.onnx.json \
-  https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/hfc_female/medium/en_US-hfc_female-medium.onnx.json
+./build/mimi_mic                 # live level meter, checks capture
+./build/mimi_wake --live         # wake-word scores in realtime
+./build/mimi_wake FILE --compare TSV   # diff against openWakeWord
+./build/mimi_listen --vad FILE   # Silero probabilities + endpoint decisions
+./build/mimi_listen              # full pipeline, no GUI
+./build/mimi_spot                # wake-phrase matcher test suite
+./build/mimi_tools               # probe every Mac control (read-only)
+./build/mimi_route "今何時ですか" # drive the router, no microphone
+./build/mimi_brain_cli --check   # Ollama reachable? which models?
 ```
 
-## Run
+## Safety
 
-```bash
-ollama serve          # if it isn't already running
-python app.py
-```
+Mimi's arguments come from a model interpreting speech, so:
 
-First launch asks you to pick a name and password (stored as a salted SHA-256
-hash — login is required every time). macOS will ask once for Microphone and
-Automation permission; allow both.
+- Every subprocess runs through `posix_spawnp` with an **argv array, never a
+  shell**. There is no string to inject into.
+- Anything embedded in AppleScript is escaped, since that *is* still a language
+  being assembled from text.
+- Deleting files, emptying the trash, shutting down and keychain access are not
+  offered at all.
+
+## Privacy
+
+Audio is held in a ring buffer and never written to disk. The journal, digests
+and profile live in `~/Library/Application Support/Mimi/` and are gitignored.
+
+The `PhraseSpotter` backend does transcribe every speech segment locally in
+order to find the wake phrase. If you want audio only processed *after* the
+wake word, use the `OpenWakeWord` backend with a trained model.

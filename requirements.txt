@@ -1,7 +1,0 @@
-ollama==0.6.2            # local LLM (gemma3n:e4b) + embeddings
-SpeechRecognition==3.17.0 # speech-to-text
-PyAudio==0.2.14          # microphone access
-piper-tts==1.4.2         # local neural text-to-speech (voice models in ./voices)
-requests==2.34.2         # page fetch + search scraping
-beautifulsoup4==4.15.0   # HTML parsing
-pywebview==6.2.1         # native desktop window

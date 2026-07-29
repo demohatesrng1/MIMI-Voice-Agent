@@ -13,10 +13,22 @@ models/
 voices/*.onnx
 voices/*.onnx.json
 
-# --- python (being retired, kept until the C++ port replaces it) --------------
+# --- retired python implementation -------------------------------------------
+# Superseded by src/. Kept on disk for reference, out of the repo. Still in
+# history before the C++ rewrite if it is ever needed.
 venv/
 __pycache__/
 *.pyc
+app.py
+mimi.py
+model.py
+speech.py
+tools.py
+journal.py
+reflect.py
+website_extractor.py
+requirements.txt
+static/
 
 # --- personal data -----------------------------------------------------------
 # config.json holds the account salt and password hash.
