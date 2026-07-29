@@ -6,6 +6,7 @@
 //   mimi_brain_cli --schema "..."       structured intent classification
 
 #include "brain/ollama.hpp"
+#include "brain/router.hpp"
 #include "core/log.hpp"
 
 #include <cstdio>
@@ -44,17 +45,12 @@ int main(int argc, char** argv) {
         "短く自然な日本語で、1〜2文で答えてください。記号や箇条書きは使わないこと。";
 
     if (schema) {
+        // The real prompt and schema, not a copy that can drift from them.
         mimi::brain::ChatOptions options;
-        options.schema = nlohmann::json{
-            {"type", "object"},
-            {"properties", {{"action", {{"type", "string"},
-                                        {"enum", {"open_site", "search_web", "launch_app",
-                                                  "screenshot", "battery", "time", "chat"}}}},
-                            {"argument", {{"type", "string"}}}}},
-            {"required", {"action", "argument"}}};
+        options.schema = mimi::brain::intent_schema();
         options.max_tokens = 60;
-        const auto result = ollama.chat(
-            "ユーザーの発話を Mac アシスタントのコマンドに変換してください。", prompt, options);
+        const auto result =
+            ollama.chat(mimi::brain::intent_prompt(), prompt, options);
         std::printf("\n%s\n", result ? result.text.c_str() : result.error.c_str());
         std::printf("(%lld ms)\n", static_cast<long long>(result.took.count()));
         return result ? 0 : 1;

@@ -44,12 +44,35 @@ const char* kSystemPrompt =
 // The action set the classifier may choose from. Kept identical to what the
 // switch below can actually execute -- a model that can name an action nobody
 // handles produces silent no-ops.
-const char* kIntentPrompt =
+// Each action is described, not just named. A bare list of enum values leaves
+// the model guessing what "screenshot" covers, and it falls back to search_web
+// for anything phrased indirectly -- "画面の写真がほしい" was classified as a
+// web search until these descriptions were added.
+const char* kIntentPromptText =
     "ユーザーの発話をMacアシスタントのコマンドに変換してください。"
-    "最も適切な action を一つ選び、必要なら argument を入れてください。"
-    "迷ったら chat を選んでください。";
+    "最も適切な action を一つだけ選び、必要なら argument を入れてください。\n"
+    "open_site      ウェブサイトを開きたい。argument はサイト名\n"
+    "search_web     ウェブで調べたい。argument は検索語\n"
+    "launch_app     Macのアプリを起動したい。argument はアプリ名\n"
+    "quit_app       アプリを終了したい。argument はアプリ名\n"
+    "screenshot     画面を撮りたい、画面の写真や画像がほしい\n"
+    "battery        バッテリーや電池の残量を知りたい\n"
+    "time           時刻や日付を知りたい\n"
+    "system_info    メモリやディスクの空き、Macの状態を知りたい\n"
+    "volume_up      音を大きくしたい\n"
+    "volume_down    音を小さくしたい、うるさい\n"
+    "mute           音を消したい\n"
+    "unmute         ミュートを解除したい\n"
+    "clipboard      コピーした内容を読みたい、要約してほしい\n"
+    "media_playpause 音楽や動画の再生・一時停止\n"
+    "media_next     次の曲へ\n"
+    "media_previous 前の曲へ\n"
+    "lock_screen    画面をロックしたい\n"
+    "find_file      ファイルを探したい。argument はファイル名\n"
+    "chat           それ以外すべて。質問、雑談、説明の依頼\n"
+    "迷ったら chat を選んでください。argument が不要なときは空文字にしてください。";
 
-json intent_schema() {
+json build_intent_schema() {
     return json{
         {"type", "object"},
         {"properties",
@@ -64,6 +87,9 @@ json intent_schema() {
 }
 
 }  // namespace
+
+const char* intent_prompt() { return kIntentPromptText; }
+nlohmann::json intent_schema() { return build_intent_schema(); }
 
 Router::Router(Ollama& ollama) : Router(ollama, Config{}) {}
 
@@ -328,10 +354,10 @@ Reply Router::rules(const std::string& utterance, const std::string& lower) {
 
 Reply Router::classify_then_route(const std::string& utterance) {
     ChatOptions options;
-    options.schema = intent_schema();
+    options.schema = build_intent_schema();
     options.max_tokens = 60;
 
-    const auto result = ollama_.chat(kIntentPrompt, utterance, options);
+    const auto result = ollama_.chat(kIntentPromptText, utterance, options);
     if (!result) {
         log::debug(kTag, "classifier unavailable, answering directly");
         return converse(utterance);

@@ -18,6 +18,12 @@ struct Reply {
     bool acted = false;       // did she touch the machine, or only talk?
 };
 
+// The prompt and schema the classifier actually uses. Exposed so tools can
+// exercise the real thing: mimi_brain_cli previously carried its own copy and
+// was quietly measuring a prompt that production never ran.
+const char* intent_prompt();
+nlohmann::json intent_schema();
+
 // Turns an utterance into an action, then into something to say.
 //
 // Same shape as route() in the Python: cheap deterministic matching first, and

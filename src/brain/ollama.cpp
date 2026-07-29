@@ -4,6 +4,7 @@
 
 #include <httplib.h>
 
+#include <cstdlib>
 #include <stdexcept>
 
 namespace mimi::brain {
@@ -52,6 +53,10 @@ struct Ollama::Impl {
 };
 
 Ollama::Ollama(Config config) : config_(std::move(config)), impl_(std::make_unique<Impl>()) {
+    // Environment overrides, as the Python original had. Useful for pointing at
+    // a remote Ollama, and for testing what happens when there isn't one.
+    if (const char* host = std::getenv("MIMI_OLLAMA_HOST")) config_.host = host;
+    if (const char* model = std::getenv("MIMI_OLLAMA_MODEL")) config_.model = model;
     impl_->endpoint = parse(config_.host);
     log::debug(kTag, "{}:{} model={}", impl_->endpoint.host, impl_->endpoint.port,
                config_.model);
