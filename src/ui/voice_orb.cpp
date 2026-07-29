@@ -2,6 +2,7 @@
 
 #include "ui/theme.hpp"
 
+#include <QBitmap>
 #include <QConicalGradient>
 #include <QPainter>
 #include <QPainterPath>
@@ -78,6 +79,44 @@ void VoiceOrb::setLevel(float rms) {
     levels_[cursor_] = level_;
     cursor_ = (cursor_ + 1) % static_cast<int>(levels_.size());
     update();
+}
+
+const QPixmap& VoiceOrb::portrait(int diameter) const {
+    if (portrait_size_ == diameter && !portrait_cache_.isNull()) return portrait_cache_;
+
+    QPixmap source(QStringLiteral(":/mimi_512.png"));
+    if (source.isNull()) {
+        portrait_cache_ = QPixmap();
+        portrait_size_ = diameter;
+        return portrait_cache_;
+    }
+
+    // The asset already carries the rounded-rect icon shape and its shadow, so
+    // trim to the artwork before re-masking to a circle -- otherwise the corners
+    // and shadow show up as a grey halo inside the orb.
+    const int inset = static_cast<int>(source.width() * 0.10);
+    source = source.copy(inset, inset, source.width() - inset * 2,
+                         source.height() - inset * 2);
+
+    const int scale = diameter * 2;  // retina
+    QPixmap scaled = source.scaled(scale, scale, Qt::KeepAspectRatioByExpanding,
+                                   Qt::SmoothTransformation);
+
+    QPixmap circular(scale, scale);
+    circular.fill(Qt::transparent);
+    {
+        QPainter painter(&circular);
+        painter.setRenderHint(QPainter::Antialiasing);
+        QPainterPath clip;
+        clip.addEllipse(0, 0, scale, scale);
+        painter.setClipPath(clip);
+        painter.drawPixmap(0, 0, scaled);
+    }
+    circular.setDevicePixelRatio(2.0);
+
+    portrait_cache_ = circular;
+    portrait_size_ = diameter;
+    return portrait_cache_;
 }
 
 QColor VoiceOrb::accent() const {
@@ -185,40 +224,39 @@ void VoiceOrb::paintEvent(QPaintEvent*) {
         painter.drawArc(box, static_cast<int>(-angle_ * 16), 70 * 16);
     }
 
-    // --- core ---------------------------------------------------------------
-    const qreal core = span * 0.40 * (1.0 + 0.05 * breath + 0.07 * level_);
-    QRadialGradient fill(QPointF(centre.x() - core * 0.25, centre.y() - core * 0.35),
-                         core * 1.9);
-    fill.setColorAt(0.0, colour.lighter(165));
-    fill.setColorAt(0.55, colour.darker(140));
-    fill.setColorAt(1.0, theme::kBg);
-    painter.setPen(Qt::NoPen);
-    painter.setBrush(fill);
-    painter.drawEllipse(centre, core, core);
+    // --- core: the character herself ----------------------------------------
+    const qreal core = span * 0.44 * (1.0 + 0.04 * breath + 0.06 * level_);
+    const int diameter = static_cast<int>(core * 2);
+    const QPixmap& face = portrait(diameter);
 
-    // Rim light on the core.
+    if (!face.isNull()) {
+        painter.drawPixmap(QPointF(centre.x() - core, centre.y() - core), face);
+
+        // Tint the portrait toward the state colour so the orb still reads as a
+        // status light rather than just a picture.
+        QColor tint = colour;
+        tint.setAlphaF(0.20 + 0.10 * level_);
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(tint);
+        painter.setCompositionMode(QPainter::CompositionMode_Overlay);
+        painter.drawEllipse(centre, core, core);
+        painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
+    } else {
+        QRadialGradient fill(QPointF(centre.x() - core * 0.25, centre.y() - core * 0.35),
+                             core * 1.9);
+        fill.setColorAt(0.0, colour.lighter(165));
+        fill.setColorAt(1.0, theme::kBg);
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(fill);
+        painter.drawEllipse(centre, core, core);
+    }
+
+    // Rim light, so she sits inside the rings rather than on top of them.
     QColor rim = colour.lighter(170);
-    rim.setAlphaF(0.55);
-    painter.setPen(QPen(rim, 1.2));
+    rim.setAlphaF(0.75);
+    painter.setPen(QPen(rim, 1.6));
     painter.setBrush(Qt::NoBrush);
     painter.drawEllipse(centre, core, core);
-
-    // --- ミミ ---------------------------------------------------------------
-    QFont label = font();
-    label.setPixelSize(static_cast<int>(core * 0.60));
-    label.setWeight(QFont::DemiBold);
-    label.setLetterSpacing(QFont::AbsoluteSpacing, core * 0.10);
-    painter.setFont(label);
-
-    const QRectF text_box(centre.x() - core, centre.y() - core, core * 2, core * 2);
-    // Faint offset copy underneath, so the glyphs sit in the glow rather than
-    // on top of it.
-    QColor shadow = theme::kBg;
-    shadow.setAlphaF(0.55);
-    painter.setPen(shadow);
-    painter.drawText(text_box.translated(0, 1.5), Qt::AlignCenter, QStringLiteral("ミミ"));
-    painter.setPen(QPen(theme::kInk));
-    painter.drawText(text_box, Qt::AlignCenter, QStringLiteral("ミミ"));
 }
 
 }  // namespace mimi::ui

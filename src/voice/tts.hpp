@@ -1,5 +1,7 @@
 #pragma once
 
+#include "voice/voicevox.hpp"
+
 #include <functional>
 #include <memory>
 #include <string>
@@ -29,9 +31,15 @@ public:
     struct Config {
         std::string language = "ja-JP";
         std::string voice_name = "Kyoko";  // empty = system default for language
-        float rate = 0.5f;                 // 0..1, AVSpeechUtterance scale
+        float rate = 0.48f;                // 0..1, AVSpeechUtterance scale
         float pitch = 1.0f;                // 0.5..2
         float volume = 1.0f;               // 0..1
+
+        // Prefer VOICEVOX when an engine is reachable. The system voices
+        // available here are all compact or Eloquence quality, so this is the
+        // difference between sounding synthetic and sounding like a person.
+        bool prefer_voicevox = true;
+        Voicevox::Config voicevox{};
     };
 
     // Opaque; defined in tts.mm so AVFoundation stays out of this header.
@@ -58,12 +66,20 @@ public:
     void set_rate(float rate);
     const Config& config() const noexcept { return config_; }
 
+    // True when speech is currently coming from VOICEVOX rather than the
+    // system synthesiser.
+    bool using_voicevox() const;
+    // Tries to bring VOICEVOX up. Safe to call when it is not installed.
+    bool start_voicevox();
+
     // Every installed voice, for the settings UI.
     static std::vector<VoiceInfo> voices();
     // Only those matching a BCP-47 language prefix, e.g. "ja".
     static std::vector<VoiceInfo> voices_for(const std::string& language_prefix);
 
 private:
+    bool speak_voicevox(const std::string& text);
+
     Config config_;
     std::unique_ptr<Impl> impl_;
 };

@@ -237,6 +237,10 @@ void MainWindow::startVoice() {
             const bool model_ok = brain_up && ollama_->model_available();
             if (model_ok) ollama_->warmup();
 
+            // VOICEVOX if it is installed; otherwise the system voice, which
+            // on this machine is compact quality and sounds it.
+            if (speaker_ && !speaker_->using_voicevox()) speaker_->start_voicevox();
+
             listener_->warmup();
             listener_->start();
             chat_->remove(loading);

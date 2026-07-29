@@ -106,10 +106,11 @@ add_library(mimi_voice STATIC
   src/voice/listener.cpp
   src/voice/phrase_spotter.cpp
   src/voice/tts.mm
+  src/voice/voicevox.cpp
 )
 target_include_directories(mimi_voice PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_link_libraries(mimi_voice PUBLIC mimi_audio onnxruntime::onnxruntime
-  PRIVATE whisper "-framework AVFoundation" "-framework Foundation")
+  PRIVATE whisper mimi_brain mimi_httplib "-framework AVFoundation" "-framework Foundation")
 set_source_files_properties(src/voice/tts.mm PROPERTIES
   COMPILE_FLAGS "-fobjc-arc -std=c++20")
 
@@ -140,6 +141,9 @@ if(MIMI_BUILD_TOOLS)
 
   add_executable(mimi_listen tools/mimi_listen.cpp)
   target_link_libraries(mimi_listen PRIVATE mimi_voice)
+
+  add_executable(mimi_say tools/mimi_say.cpp)
+  target_link_libraries(mimi_say PRIVATE mimi_voice)
 
   add_executable(mimi_spot tools/mimi_spot.cpp)
   target_link_libraries(mimi_spot PRIVATE mimi_voice)

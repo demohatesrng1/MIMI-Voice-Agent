@@ -3,6 +3,7 @@
 #include "voice/listener.hpp"
 
 #include <QColor>
+#include <QPixmap>
 #include <QVector>
 #include <QWidget>
 
@@ -42,6 +43,12 @@ protected:
 
 private:
     QColor accent() const;
+    // The app art, masked to a circle at the size we need. Rebuilt only when
+    // the diameter changes; masking every frame would be wasteful at 12 fps.
+    const QPixmap& portrait(int diameter) const;
+
+    mutable QPixmap portrait_cache_;
+    mutable int portrait_size_ = 0;
 
     voice::State state_ = voice::State::Idle;
     qreal phase_ = 0.0;
