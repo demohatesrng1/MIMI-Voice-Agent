@@ -1,18 +1,25 @@
 #pragma once
 
+#include <QString>
 #include <QWidget>
 #include <vector>
 
 class QButtonGroup;
+class QLabel;
 class QPushButton;
 
 namespace mimi::ui {
 
-// The left navigation rail.
+// The left sidebar.
 //
-// A voice assistant needs somewhere to *go*, not just a scrollback. Four
-// destinations, always visible, always in the same place: where she is now,
-// what she has done, what she can do, and how she is set up.
+// Labelled, not icon-only. An icon rail works in VS Code because its four
+// destinations are universal and used hourly; here the destinations are
+// specific to this app and used occasionally, so a bare glyph is a guessing
+// game. The width buys unambiguous navigation.
+//
+// The lower half is an engine readout -- which models are actually loaded.
+// For a local assistant that is genuinely useful information: it is the
+// difference between "she is thinking" and "nothing is running".
 class NavRail : public QWidget {
     Q_OBJECT
 
@@ -22,20 +29,31 @@ public:
     explicit NavRail(QWidget* parent = nullptr);
 
     void setCurrent(int page);
-    // The mute control lives here too, pinned to the bottom, away from the
-    // navigation so it is never hit by accident.
     void setListening(bool listening);
+
+    // Engine status lines. Empty text greys the row out as "not running".
+    void setSpeechEngine(const QString& name, bool ready);
+    void setBrainEngine(const QString& name, bool ready);
+    void setVoiceEngine(const QString& name, bool ready);
 
 Q_SIGNALS:
     void pageSelected(int page);
     void muteToggled(bool muted);
 
 private:
-    QPushButton* addTab(const QString& tip, int page);
+    QWidget* buildStatusRow(const QString& caption, QLabel** valueOut, QLabel** dotOut);
+    QPushButton* addTab(const QString& label, int page);
 
     QButtonGroup* group_ = nullptr;
     QPushButton* power_ = nullptr;
     std::vector<QPushButton*> tabs_;
+
+    QLabel* speechDot_ = nullptr;
+    QLabel* speechValue_ = nullptr;
+    QLabel* brainDot_ = nullptr;
+    QLabel* brainValue_ = nullptr;
+    QLabel* voiceDot_ = nullptr;
+    QLabel* voiceValue_ = nullptr;
 };
 
 }  // namespace mimi::ui

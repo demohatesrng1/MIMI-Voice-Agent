@@ -46,7 +46,8 @@ void adopt_native_titlebar(QWidget* widget) {
     // rather than fighting it.
     window.appearance = [NSAppearance appearanceNamed:NSAppearanceNameDarkAqua];
 
-    log::debug(kTag, "native title bar adopted");
+    log::info(kTag, "titlebar adopted (backing scale {}x)",
+              window.backingScaleFactor);
 }
 
 int traffic_light_inset() {
