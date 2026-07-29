@@ -4,6 +4,7 @@
 #include <QWidget>
 
 class QLabel;
+class QTimer;
 
 namespace mimi::ui {
 
@@ -13,12 +14,10 @@ class VoiceOrb;
 //
 // Deliberately not a chat transcript. You do not scroll back through a
 // conversation with an assistant -- you glance at what she is doing now and
-// reach for what she can do next. So: her, large and reactive; the single
-// exchange in progress, in type big enough to read across a desk; and the
-// common commands as tiles, because a voice product that does not tell you
-// what to say is unusable on the first day.
-//
-// History still exists, in Activity, where a log belongs.
+// reach for what she can do next. So: her, large and alive at the centre;
+// the single exchange in progress, in type big enough to read across a desk;
+// and a quiet row of suggestions, because a voice product that does not tell
+// you what to say is unusable on the first day.
 class HomeView : public QWidget {
     Q_OBJECT
 
@@ -32,17 +31,19 @@ public:
     void setThinking();
 
 Q_SIGNALS:
-    // A quick-action tile was pressed; the text is fed through the router
+    // A suggestion chip was pressed; the text is fed through the router
     // exactly as if it had been spoken.
     void commandRequested(QString utterance);
 
 private:
-    QWidget* buildTiles();
+    QWidget* buildChips();
 
     VoiceOrb* orb_ = nullptr;
     QLabel* stateLabel_ = nullptr;
     QLabel* saidLabel_ = nullptr;
     QLabel* replyLabel_ = nullptr;
+    QTimer* thinkingTick_ = nullptr;
+    int thinkingBeat_ = 0;
 };
 
 }  // namespace mimi::ui

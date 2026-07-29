@@ -86,11 +86,11 @@ void FloatingOrb::setState(int state) {
     if (next == state_) return;
     state_ = next;
     switch (state_) {
-        case voice::State::Idle:      pulse_->setDuration(3200); spin_->setDuration(9000);  break;
-        case voice::State::Listening: pulse_->setDuration(1400); spin_->setDuration(4200);  break;
-        case voice::State::Thinking:  pulse_->setDuration(800);  spin_->setDuration(1500);  break;
-        case voice::State::Speaking:  pulse_->setDuration(1700); spin_->setDuration(6000);  break;
-        case voice::State::Paused:    pulse_->setDuration(6000); spin_->setDuration(24000); break;
+        case voice::State::Idle:      pulse_->setDuration(3200); spin_->setDuration(5500);  break;
+        case voice::State::Listening: pulse_->setDuration(1400); spin_->setDuration(2800);  break;
+        case voice::State::Thinking:  pulse_->setDuration(800);  spin_->setDuration(1000);  break;
+        case voice::State::Speaking:  pulse_->setDuration(1700); spin_->setDuration(3500);  break;
+        case voice::State::Paused:    pulse_->setDuration(6000); spin_->setDuration(15000); break;
     }
     if (state_ == voice::State::Paused) level_ = 0.0;
     update();
@@ -105,29 +105,23 @@ void FloatingOrb::setLevel(float rms) {
 QColor FloatingOrb::accent() const {
     if (muted_) return theme::kError;
     switch (state_) {
-        case voice::State::Idle:      return theme::kPinkDeep;
-        case voice::State::Listening: return theme::kPink;
-        case voice::State::Thinking:  return theme::kPinkSoft;
+        case voice::State::Idle:      return theme::kAccentDeep;
+        case voice::State::Listening: return theme::kAccent;
+        case voice::State::Thinking:  return theme::kAccentSoft;
         case voice::State::Speaking:  return theme::kInk;
         case voice::State::Paused:    return theme::kFaint;
     }
-    return theme::kPinkDeep;
+    return theme::kAccentDeep;
 }
 
 const QPixmap& FloatingOrb::portrait() const {
     QPixmap& cache = muted_ ? muted_cache_ : portrait_cache_;
     if (!cache.isNull()) return cache;
 
-    QPixmap source(QStringLiteral(":/mimi_512.png"));
+    // A clean full-bleed crop straight from the master art, her glow ring at
+    // the edge of the disc.
+    QPixmap source(QStringLiteral(":/mimi_face.png"));
     if (source.isNull()) return cache;
-
-    // The asset carries the icon's rounded corners and drop shadow. Trim to the
-    // artwork before re-masking, or those show as a grey crescent inside the
-    // circle. A little more is taken than for the in-window orb, because at
-    // this size filling the disc with face matters more than keeping the edges.
-    const int inset = static_cast<int>(source.width() * 0.13);
-    source = source.copy(inset, inset, source.width() - inset * 2,
-                         source.height() - inset * 2);
 
     const int scale = kDisc * 2;  // retina
     QPixmap scaled = source.scaled(scale, scale, Qt::KeepAspectRatioByExpanding,
@@ -191,7 +185,7 @@ void FloatingOrb::paintEvent(QPaintEvent*) {
     if (!face.isNull()) {
         painter.drawPixmap(QPointF(centre.x() - radius, centre.y() - radius), face);
     } else {
-        painter.setBrush(theme::kSurface2);
+        painter.setBrush(theme::kLayer2);
         painter.drawEllipse(centre, radius, radius);
     }
 
@@ -200,14 +194,23 @@ void FloatingOrb::paintEvent(QPaintEvent*) {
     // over her face.
     {
         QConicalGradient sweep(centre, -angle_);
-        QColor bright = colour.lighter(150);
-        bright.setAlphaF(1.0);
-        QColor dim = colour;
-        dim.setAlphaF(0.35);
-        sweep.setColorAt(0.00, dim);
-        sweep.setColorAt(0.22, bright);
-        sweep.setColorAt(0.55, dim);
-        sweep.setColorAt(1.00, dim);
+        if (muted_ || state_ == voice::State::Paused) {
+            // Muted stays monochrome: the spectrum is a sign of life.
+            QColor bright = colour.lighter(150);
+            bright.setAlphaF(1.0);
+            QColor dim = colour;
+            dim.setAlphaF(0.35);
+            sweep.setColorAt(0.00, dim);
+            sweep.setColorAt(0.22, bright);
+            sweep.setColorAt(0.55, dim);
+            sweep.setColorAt(1.00, dim);
+        } else {
+            // The full spectrum riding the edge, spinning with the ring.
+            for (int i = 0; i <= 6; ++i) {
+                QColor hue = QColor::fromHsvF(std::fmod(i / 6.0, 1.0), 0.72, 1.0);
+                sweep.setColorAt(i / 6.0, hue);
+            }
+        }
 
         QPen ring(QBrush(sweep), 2.6 + 2.4 * level_);
         painter.setPen(ring);

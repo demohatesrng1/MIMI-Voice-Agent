@@ -1,214 +1,143 @@
-/* Mimi — black and pink.
-   One hue, used at four weights, against near-black. State is signalled by
-   intensity rather than by a different colour each time, so the palette keeps
-   meaning something. Structure comes from hairlines and spacing, not from
-   boxes inside boxes. */
+/* Mimi — graphite and one electric blue.
+   Depth over outlines: elevation comes from layered fills, light and shadow,
+   never from borders. The accent is spent only on focus, state, and her.
+   Type: SF Pro Display for display sizes, SF Pro Text for UI. */
 
 QWidget {
   background: transparent;
-  color: #f3f3f8;
-  font-family: "Hiragino Sans", "SF Pro Text", "Helvetica Neue", sans-serif;
-  font-size: 13.5px;
+  color: #f2f5f9;
+  
+  font-size: 14px;
 }
 
 QLabel { background: transparent; }
 
-#root { background: #08080c; }
-
-#hairline { border: none; background: #24242f; }
+/* The root paints itself (AmbientCanvas); nothing here. */
+#root { background: transparent; }
 
 /* ------------------------------------------------------------------ chrome */
 
-#titleBar { background: #10101a; }
+/* The bar is the same surface as the content — that is what "unified title
+   bar" means. Any distinct band here re-creates stacked web chrome. */
+#titleBar { background: transparent; }
 
 #wordmark {
+  font-size: 15px;
+  font-weight: 600;
+  color: #aeb6c4;
+}
+
+/* One status capsule: a raised sliver of glass holding a dot and a word. */
+#statusPill {
+  background: rgba(255, 255, 255, 0.045);
+  border-radius: 14px;
+}
+#statusDot  { font-size: 8px; color: #1d4f94; }
+#statusText {
   font-size: 12.5px;
-  font-weight: 800;
-  letter-spacing: 3.5px;
-  color: #f3f3f8;
+  font-weight: 500;
+  letter-spacing: 0.3px;
+  color: #aeb6c4;
 }
 
-#wordmarkJp {
-  font-size: 11px;
-  letter-spacing: 4px;
-  color: #ff2d87;
-}
-
-#statusDot  { font-size: 8px; color: #9e1853; }
-#statusText { font-size: 11px; color: #87879c; letter-spacing: 0.5px; }
-
-/* Only visible while the mic is genuinely open. */
-#micBadge {
-  font-size: 9px;
-  font-weight: 800;
-  letter-spacing: 1.6px;
-  color: #ff2d87;
-  border: 1px solid rgba(255, 45, 135, 0.40);
-  border-radius: 3px;
-  padding: 2px 7px;
-}
-
-/* -------------------------------------------------------------------- rail */
-
-#rail { background: #10101a; }
-
-/* NavTab paints its own icon and selection bar; it only needs a null frame. */
-#navTab {
-  background: transparent;
+/* Mute, spelled out. Quiet glass at rest; unmistakably off when engaged. */
+#mutePill {
+  background: rgba(255, 255, 255, 0.05);
   border: none;
+  border-radius: 15px;
+  color: #aeb6c4;
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 0px 16px;
 }
-
-#power {
-  background: transparent;
-  border: 1px solid #24242f;
-  border-radius: 16px;
-}
-#power:checked  { color: #ff2d87; border-color: rgba(255, 45, 135, 0.45); }
-#power:!checked { color: #ff4560; border-color: rgba(255, 69, 96, 0.45); }
-#power:hover    { background: rgba(255, 255, 255, 0.05); }
+#mutePill:hover   { background: rgba(255, 255, 255, 0.09); color: #f2f5f9; }
+#mutePill:checked { background: rgba(255, 69, 96, 0.16); color: #ff8a9a; }
 
 /* -------------------------------------------------------------------- home */
 
-#home { background: #08080c; }
+#home { background: transparent; }
 
 /* The single most important word on screen: what she is doing right now. */
 #heroState {
-  font-size: 11px;
-  font-weight: 700;
+  font-size: 12px;
+  font-weight: 600;
   letter-spacing: 5px;
-  color: #ff2d87;
+  color: #4d9fff;
 }
 
 #heroSaid {
-  font-size: 14px;
-  color: #6c6c82;
-  letter-spacing: 0.3px;
+  font-size: 15px;
+  color: #6b7689;
+  letter-spacing: 0.2px;
 }
 
 /* Her answer is the thing you actually came to read, so it is the largest
-   type in the app by a clear margin. */
+   type in the app by a clear margin. Display face, light weight: a headline,
+   not a paragraph. */
 #heroReply {
-  font-size: 25px;
+  font-size: 28px;
   font-weight: 300;
-  line-height: 152%;
-  color: #f3f3f8;
+  line-height: 150%;
+  color: #f2f5f9;
 }
-
-#tile {
-  background: #10101a;
-  border: 1px solid #24242f;
-  border-radius: 11px;
-  color: #a4a4ba;
-  font-size: 12.5px;
-  text-align: left;
-  padding: 0px 16px;
-}
-#tile:hover {
-  background: rgba(255, 45, 135, 0.09);
-  border-color: rgba(255, 45, 135, 0.40);
-  color: #ffffff;
-}
-#tile:pressed { background: rgba(255, 45, 135, 0.18); }
 
 /* --------------------------------------------------------- shared headings */
 
 #sectionHead {
-  font-size: 10.5px;
-  font-weight: 800;
-  letter-spacing: 3.5px;
-  color: #ff2d87;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 4px;
+  color: #4d9fff;
 }
 
 #sectionLead {
   font-size: 13px;
-  color: #6c6c82;
+  color: #8a94a6;
   line-height: 165%;
 }
 
 #groupHead {
   font-size: 10px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 2.5px;
-  color: #55556a;
+  color: #515b6e;
 }
 
 #emptyState {
   font-size: 13px;
-  color: #4d4d60;
+  color: #515b6e;
   line-height: 175%;
-}
-
-/* ---------------------------------------------------------------- activity */
-
-#activity, #activityContent, #skills, #skillsContent { background: #08080c; }
-
-#activityRow {
-  background: #10101a;
-  border: 1px solid #1c1c27;
-  border-radius: 10px;
-}
-#activityRow:hover { border-color: #2c2c3c; }
-
-#rowTime  { font-size: 11px; color: #4d4d60; }
-#rowSaid  { font-size: 12.5px; color: #6c6c82; }
-#rowReply { font-size: 13.5px; color: #e4e4ee; line-height: 155%; }
-
-/* Present only when she actually changed something on the machine. */
-#rowBadge {
-  font-size: 9.5px;
-  font-weight: 700;
-  letter-spacing: 0.8px;
-  color: #ff2d87;
-  background: rgba(255, 45, 135, 0.12);
-  border: 1px solid rgba(255, 45, 135, 0.30);
-  border-radius: 4px;
-  padding: 3px 8px;
 }
 
 /* ------------------------------------------------------------------ skills */
 
+#skills, #skillsContent { background: transparent; }
+
+/* Cards are raised layers, not outlined boxes: a step up the graphite ramp,
+   brighter still on hover. No borders anywhere. */
 #skillCard {
-  background: #10101a;
-  border: 1px solid #24242f;
-  border-radius: 12px;
-  text-align: left;
-}
-#skillCard:hover {
-  background: rgba(255, 45, 135, 0.07);
-  border-color: rgba(255, 45, 135, 0.42);
-}
-#skillCard:pressed { background: rgba(255, 45, 135, 0.15); }
-
-#skillTitle  { font-size: 13px; font-weight: 600; color: #f3f3f8; }
-#skillPhrase { font-size: 12px; color: #ff7ab4; }
-#skillDetail { font-size: 11.5px; color: #55556a; }
-
-/* --------------------------------------------------- title-bar command field */
-
-/* The one input, living in the chrome. Recessed rather than raised: it should
-   read as part of the bar, not as a control sitting on top of it. */
-#omni {
-  background: #05050a;
-  border: 1px solid #1e1e2a;
-  border-radius: 14px;
-  color: #f3f3f8;
-  font-size: 12.5px;
-  padding: 5px 14px;
-  selection-background-color: #9e1853;
-}
-#omni:hover { border-color: #2a2a39; }
-#omni:focus {
-  background: #0a0a12;
-  border-color: rgba(255, 45, 135, 0.55);
-}
-
-#micInline {
-  background: transparent;
+  background: rgba(255, 255, 255, 0.04);
   border: none;
   border-radius: 14px;
+  text-align: left;
 }
-#micInline:hover    { background: rgba(255, 45, 135, 0.14); }
-#micInline:disabled { background: transparent; }
+#skillCard:hover   { background: rgba(255, 255, 255, 0.07); }
+#skillCard:pressed { background: rgba(61, 139, 255, 0.12); }
+
+#skillTitle  { font-size: 13px; font-weight: 600; color: #f2f5f9; }
+#skillPhrase { font-size: 12px; color: #8fc0ff; }
+#skillDetail { font-size: 11.5px; color: #515b6e; }
+
+/* ---------------------------------------------------------------- composer */
+
+/* The bar paints its own glass; the field inside is naked text. */
+QLineEdit#commandField {
+  background: transparent;
+  border: none;
+  color: #f2f5f9;
+  font-size: 15px;
+  selection-background-color: #1d4f94;
+}
 
 /* ------------------------------------------------------------- scrollbars */
 
@@ -218,19 +147,19 @@ QScrollBar:vertical {
   margin: 4px 2px;
 }
 QScrollBar::handle:vertical {
-  background: #24242f;
+  background: rgba(255, 255, 255, 0.10);
   border-radius: 3px;
   min-height: 40px;
 }
-QScrollBar::handle:vertical:hover { background: #9e1853; }
+QScrollBar::handle:vertical:hover { background: rgba(61, 139, 255, 0.45); }
 QScrollBar::add-line, QScrollBar::sub-line { height: 0; }
 QScrollBar::add-page, QScrollBar::sub-page { background: transparent; }
 
 QToolTip {
-  background: #16161f;
-  color: #e4e4ee;
-  border: 1px solid #2c2c3c;
-  border-radius: 5px;
-  padding: 5px 9px;
+  background: #161a23;
+  color: #d7dfe9;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 10px;
   font-size: 12px;
 }

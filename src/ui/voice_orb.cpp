@@ -58,11 +58,11 @@ void VoiceOrb::setState(int state) {
     state_ = next;
 
     switch (state_) {
-        case voice::State::Idle:      pulse_->setDuration(3200); spin_->setDuration(11000); break;
-        case voice::State::Listening: pulse_->setDuration(1500); spin_->setDuration(5200);  break;
-        case voice::State::Thinking:  pulse_->setDuration(850);  spin_->setDuration(1700);  break;
-        case voice::State::Speaking:  pulse_->setDuration(1800); spin_->setDuration(7000);  break;
-        case voice::State::Paused:    pulse_->setDuration(6000); spin_->setDuration(30000); break;
+        case voice::State::Idle:      pulse_->setDuration(3200); spin_->setDuration(6000);  break;
+        case voice::State::Listening: pulse_->setDuration(1500); spin_->setDuration(3200);  break;
+        case voice::State::Thinking:  pulse_->setDuration(850);  spin_->setDuration(1100);  break;
+        case voice::State::Speaking:  pulse_->setDuration(1800); spin_->setDuration(4000);  break;
+        case voice::State::Paused:    pulse_->setDuration(6000); spin_->setDuration(20000); break;
     }
     if (state_ == voice::State::Paused) {
         level_ = 0.0;
@@ -84,19 +84,14 @@ void VoiceOrb::setLevel(float rms) {
 const QPixmap& VoiceOrb::portrait(int diameter) const {
     if (portrait_size_ == diameter && !portrait_cache_.isNull()) return portrait_cache_;
 
-    QPixmap source(QStringLiteral(":/mimi_512.png"));
+    // A clean full-bleed face crop cut straight from the master art, so no
+    // trimming and only one downscale between the source and the screen.
+    QPixmap source(QStringLiteral(":/mimi_face.png"));
     if (source.isNull()) {
         portrait_cache_ = QPixmap();
         portrait_size_ = diameter;
         return portrait_cache_;
     }
-
-    // The asset already carries the rounded-rect icon shape and its shadow, so
-    // trim to the artwork before re-masking to a circle -- otherwise the corners
-    // and shadow show up as a grey halo inside the orb.
-    const int inset = static_cast<int>(source.width() * 0.10);
-    source = source.copy(inset, inset, source.width() - inset * 2,
-                         source.height() - inset * 2);
 
     const int scale = diameter * 2;  // retina
     QPixmap scaled = source.scaled(scale, scale, Qt::KeepAspectRatioByExpanding,
@@ -124,13 +119,13 @@ QColor VoiceOrb::accent() const {
     // full accent, thinking is lighter, speaking goes almost white -- so the
     // state is read from brightness without needing a legend.
     switch (state_) {
-        case voice::State::Idle:      return theme::kPinkDeep;
-        case voice::State::Listening: return theme::kPink;
-        case voice::State::Thinking:  return theme::kPinkSoft;
+        case voice::State::Idle:      return theme::kAccentDeep;
+        case voice::State::Listening: return theme::kAccent;
+        case voice::State::Thinking:  return theme::kAccentSoft;
         case voice::State::Speaking:  return theme::kInk;
         case voice::State::Paused:    return theme::kFaint;
     }
-    return theme::kPinkDeep;
+    return theme::kAccentDeep;
 }
 
 void VoiceOrb::paintEvent(QPaintEvent*) {
@@ -146,9 +141,9 @@ void VoiceOrb::paintEvent(QPaintEvent*) {
     const qreal glow = span * (0.92 + 0.06 * breath + 0.14 * level_);
     QRadialGradient halo(centre, glow);
     QColor core_glow = colour;
-    core_glow.setAlphaF(0.20 + 0.18 * level_);
+    core_glow.setAlphaF(0.13 + 0.14 * level_);
     QColor mid_glow = colour;
-    mid_glow.setAlphaF(0.07);
+    mid_glow.setAlphaF(0.05);
     QColor no_glow = colour;
     no_glow.setAlphaF(0.0);
     halo.setColorAt(0.0, core_glow);
@@ -171,7 +166,7 @@ void VoiceOrb::paintEvent(QPaintEvent*) {
 
         QColor spoke = colour;
         // Fade with age so the ring reads as a trail, not a static equaliser.
-        spoke.setAlphaF(0.14 + 0.60 * value * (1.0 - static_cast<qreal>(i) / count));
+        spoke.setAlphaF(0.10 + 0.55 * value * (1.0 - static_cast<qreal>(i) / count));
 
         QPen pen(spoke, 2.0);
         pen.setCapStyle(Qt::RoundCap);
@@ -185,18 +180,27 @@ void VoiceOrb::paintEvent(QPaintEvent*) {
     // --- rotating rings -----------------------------------------------------
     const qreal ring = span * 0.52;
     {
-        // A conical sweep gives the ring a light source that travels round it.
         QConicalGradient sweep(centre, -angle_);
-        QColor bright = colour.lighter(150);
-        bright.setAlphaF(0.95);
-        QColor dark = colour;
-        dark.setAlphaF(0.12);
-        sweep.setColorAt(0.00, dark);
-        sweep.setColorAt(0.25, bright);
-        sweep.setColorAt(0.55, dark);
-        sweep.setColorAt(1.00, dark);
+        if (state_ == voice::State::Paused) {
+            // Muted stays monochrome: the spectrum is a sign of life.
+            QColor bright = colour.lighter(150);
+            bright.setAlphaF(0.80);
+            QColor dark = colour;
+            dark.setAlphaF(0.10);
+            sweep.setColorAt(0.00, dark);
+            sweep.setColorAt(0.25, bright);
+            sweep.setColorAt(0.55, dark);
+            sweep.setColorAt(1.00, dark);
+        } else {
+            // The full spectrum riding the ring: RGB, spinning with it.
+            for (int i = 0; i <= 6; ++i) {
+                QColor hue = QColor::fromHsvF(std::fmod(i / 6.0, 1.0), 0.72, 1.0);
+                hue.setAlphaF(0.85);
+                sweep.setColorAt(i / 6.0, hue);
+            }
+        }
 
-        QPen pen(QBrush(sweep), 2.4 + 1.6 * level_);
+        QPen pen(QBrush(sweep), 2.6 + 1.6 * level_);
         pen.setCapStyle(Qt::RoundCap);
         painter.setPen(pen);
         painter.setBrush(Qt::NoBrush);
@@ -206,7 +210,7 @@ void VoiceOrb::paintEvent(QPaintEvent*) {
     // Counter-rotating dashed ring, for depth.
     {
         QColor faint = colour;
-        faint.setAlphaF(0.30);
+        faint.setAlphaF(0.16);
         QPen pen(faint, 1.0);
         pen.setDashPattern({1.0, 5.0});
         painter.setPen(pen);
@@ -233,22 +237,13 @@ void VoiceOrb::paintEvent(QPaintEvent*) {
     const QPixmap& face = portrait(diameter);
 
     if (!face.isNull()) {
+        // Untinted: she reads as artwork, and the ring carries the state.
         painter.drawPixmap(QPointF(centre.x() - core, centre.y() - core), face);
-
-        // Tint the portrait toward the state colour so the orb still reads as a
-        // status light rather than just a picture.
-        QColor tint = colour;
-        tint.setAlphaF(0.20 + 0.10 * level_);
-        painter.setPen(Qt::NoPen);
-        painter.setBrush(tint);
-        painter.setCompositionMode(QPainter::CompositionMode_Overlay);
-        painter.drawEllipse(centre, core, core);
-        painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
     } else {
         QRadialGradient fill(QPointF(centre.x() - core * 0.25, centre.y() - core * 0.35),
                              core * 1.9);
         fill.setColorAt(0.0, colour.lighter(165));
-        fill.setColorAt(1.0, theme::kBg);
+        fill.setColorAt(1.0, theme::kVoid);
         painter.setPen(Qt::NoPen);
         painter.setBrush(fill);
         painter.drawEllipse(centre, core, core);
@@ -256,7 +251,7 @@ void VoiceOrb::paintEvent(QPaintEvent*) {
 
     // Rim light, so she sits inside the rings rather than on top of them.
     QColor rim = colour.lighter(170);
-    rim.setAlphaF(0.75);
+    rim.setAlphaF(0.55);
     painter.setPen(QPen(rim, 1.6));
     painter.setBrush(Qt::NoBrush);
     painter.drawEllipse(centre, core, core);

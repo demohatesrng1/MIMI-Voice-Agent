@@ -27,7 +27,7 @@ NSWindow* native_window(QWidget* widget) {
 void adopt_native_titlebar(QWidget* widget) {
     NSWindow* window = native_window(widget);
     if (window == nil) {
-        log::warn(kTag, "no native window yet; call this after show()");
+        log::warn(kTag, "no native window yet; call this after winId()");
         return;
     }
 
@@ -38,39 +38,98 @@ void adopt_native_titlebar(QWidget* widget) {
     window.titlebarAppearsTransparent = YES;
     window.titleVisibility = NSWindowTitleHidden;
 
+    // AppKit draws its own hairline under the title bar once content sits
+    // behind it. The design is one unified surface, so: no line.
+    window.titlebarSeparatorStyle = NSTitlebarSeparatorStyleNone;
+
+    // The empty toolbar is not decoration -- unified-compact style is what
+    // grows the title-bar strip to toolbar height and vertically centres the
+    // traffic lights in it. Without it the lights hug the top-left corner of
+    // the taller custom bar. This is the same mechanism behind Electron's
+    // "hiddenInset" look. It draws nothing because the titlebar is
+    // transparent and it has no items.
+    if (window.toolbar == nil) {
+        window.toolbar = [[NSToolbar alloc] initWithIdentifier:@"mimi.window.chrome"];
+        window.toolbarStyle = NSWindowToolbarStyleUnifiedCompact;
+    }
+
     // Dragging by the background is what replaces the missing title bar. Text
-    // fields and buttons still get their events first.
+    // fields and buttons still get their events first. (Qt's view swallows
+    // most of these drags; the title bar widget also starts a native move
+    // explicitly, so both paths are covered.)
     window.movableByWindowBackground = YES;
 
-    // Dark chrome, so the traffic lights and any system menus match the app
-    // rather than fighting it.
+    // Single-window app; the system's window-tab menu items only confuse.
+    window.tabbingMode = NSWindowTabbingModeDisallowed;
+
+    // Dark chrome, so the traffic lights, menus and vibrancy match the
+    // black-and-pink design rather than fighting it. Deliberately pinned:
+    // the palette has no light variant, and grey traffic lights on near-black
+    // is exactly the mismatch this file exists to avoid.
     window.appearance = [NSAppearance appearanceNamed:NSAppearanceNameDarkAqua];
 
     log::info(kTag, "titlebar adopted (backing scale {}x)",
               window.backingScaleFactor);
 }
 
-int traffic_light_inset() {
-    // Measured rather than guessed: ask the window for where the buttons
-    // actually are, so this stays correct if Apple moves them again.
-    static int inset = 0;
-    if (inset > 0) return inset;
+void add_window_vibrancy(QWidget* widget) {
+    NSWindow* window = native_window(widget);
+    if (window == nil) return;
 
-    NSWindow* probe = [[NSWindow alloc]
-        initWithContentRect:NSMakeRect(0, 0, 400, 200)
-                  styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
-                             NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable)
-                    backing:NSBackingStoreBuffered
-                      defer:YES];
-    NSButton* zoom = [probe standardWindowButton:NSWindowZoomButton];
-    inset = zoom != nil ? static_cast<int>(NSMaxX(zoom.frame)) + 12 : 78;
-    [probe close];
-    return inset;
+    // Qt's QNSView is the content view; its superview is the frame view that
+    // owns all window chrome. The effect view goes there, underneath Qt, so
+    // the blur shows through wherever the stylesheet paints with alpha.
+    NSView* content = window.contentView;
+    NSView* frame = content.superview;
+    if (frame == nil) {
+        log::warn(kTag, "no frame view; vibrancy skipped");
+        return;
+    }
+    // Checked by identifier, not by class: modern AppKit keeps effect views
+    // of its own inside the frame, and matching on class mistakes those for
+    // ours and never attaches anything.
+    NSString* const fx_id = @"mimi.vibrancy";
+    for (NSView* sibling in frame.subviews) {
+        if ([sibling.identifier isEqualToString:fx_id]) return;  // already attached
+    }
+
+    NSVisualEffectView* fx = [[NSVisualEffectView alloc] initWithFrame:frame.bounds];
+    fx.identifier = fx_id;
+    fx.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+    // The material Apple designates for exactly this: the window's own
+    // backdrop, as opposed to sidebar/menu/popover materials.
+    fx.material = NSVisualEffectMaterialUnderWindowBackground;
+    fx.blendingMode = NSVisualEffectBlendingModeBehindWindow;
+    // Dims when the window deactivates, like every native window backdrop.
+    fx.state = NSVisualEffectStateFollowsWindowActiveState;
+    [frame addSubview:fx positioned:NSWindowBelow relativeTo:content];
+
+    log::info(kTag, "vibrancy attached");
 }
 
-void make_draggable_background(QWidget* widget) {
+int traffic_light_inset(QWidget* widget) {
     NSWindow* window = native_window(widget);
-    if (window != nil) window.movableByWindowBackground = YES;
+    NSButton* zoom =
+        window != nil ? [window standardWindowButton:NSWindowZoomButton] : nil;
+    if (zoom == nil) return 78;  // no window to measure; the classic value
+    // Measured rather than guessed, from this window's real buttons, so the
+    // value tracks the toolbar style and whatever Apple changes next.
+    const NSRect in_window = [zoom convertRect:zoom.bounds toView:nil];
+    return static_cast<int>(NSMaxX(in_window)) + 12;
+}
+
+void titlebar_double_clicked(QWidget* widget) {
+    NSWindow* window = native_window(widget);
+    if (window == nil) return;
+    // Honour the user's "double-click a window's title bar to..." setting
+    // instead of hardcoding zoom.
+    NSString* action = [[NSUserDefaults standardUserDefaults]
+        stringForKey:@"AppleActionOnDoubleClick"];
+    if ([action isEqualToString:@"Minimize"]) {
+        [window miniaturize:nil];
+    } else if (![action isEqualToString:@"None"]) {
+        [window zoom:nil];
+    }
 }
 
 }  // namespace mimi::ui

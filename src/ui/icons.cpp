@@ -57,14 +57,30 @@ QPainterPath build(Glyph glyph) {
             break;
         }
 
-        case Glyph::Settings:
-            p.addEllipse(QPointF(12, 12), 3.0, 3.0);
-            for (int i = 0; i < 8; ++i) {
-                const qreal a = i * M_PI / 4.0;
-                p.moveTo(12 + std::cos(a) * 6.0, 12 + std::sin(a) * 6.0);
-                p.lineTo(12 + std::cos(a) * 8.6, 12 + std::sin(a) * 8.6);
+        case Glyph::Settings: {
+            // A real gear silhouette -- eight teeth around a ring with a hub.
+            // The old radial ticks read as a sun, not settings.
+            const QPointF c(12, 12);
+            constexpr int teeth = 8;
+            const qreal outer = 9.0;
+            const qreal valley = 6.7;
+            auto at = [&](qreal base, qreal offset_deg, qreal r) {
+                const qreal a = base + offset_deg * M_PI / 180.0;
+                return QPointF(c.x() + std::cos(a) * r, c.y() + std::sin(a) * r);
+            };
+            for (int i = 0; i < teeth; ++i) {
+                const qreal base = i * (2.0 * M_PI / teeth) - M_PI / 2.0;
+                if (i == 0) p.moveTo(at(base, -22.5, valley));
+                p.lineTo(at(base, -11, valley));
+                p.lineTo(at(base, -7, outer));
+                p.lineTo(at(base, 7, outer));
+                p.lineTo(at(base, 11, valley));
+                p.lineTo(at(base, 22.5, valley));
             }
+            p.closeSubpath();
+            p.addEllipse(c, 3.1, 3.1);
             break;
+        }
 
         case Glyph::Send:
             p.moveTo(5, 12);

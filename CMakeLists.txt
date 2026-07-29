@@ -169,9 +169,10 @@ if(MIMI_BUILD_GUI)
     src/ui/main_window.cpp
     src/ui/floating_orb.cpp
     src/ui/skills_view.cpp
-    src/ui/activity_view.cpp
     src/ui/home_view.cpp
-    src/ui/nav_rail.cpp
+    src/ui/ambient.cpp
+    src/ui/controls.cpp
+    src/ui/command_bar.cpp
     src/ui/icons.cpp
     src/ui/mac_window.mm
     src/ui/voice_orb.cpp
@@ -179,9 +180,10 @@ if(MIMI_BUILD_GUI)
     src/ui/main_window.hpp
     src/ui/floating_orb.hpp
     src/ui/skills_view.hpp
-    src/ui/activity_view.hpp
     src/ui/home_view.hpp
-    src/ui/nav_rail.hpp
+    src/ui/ambient.hpp
+    src/ui/controls.hpp
+    src/ui/command_bar.hpp
     src/ui/icons.hpp
     src/ui/mac_window.hpp
     src/ui/voice_orb.hpp
@@ -201,7 +203,7 @@ if(MIMI_BUILD_GUI)
   qt_add_resources(mimi_app "appicon"
     PREFIX "/"
     BASE   "assets"
-    FILES  assets/mimi_512.png)
+    FILES  assets/mimi_face.png)
 
   target_link_libraries(mimi_app PRIVATE Qt6::Widgets mimi_voice mimi_brain
     "-framework AppKit")

@@ -1,14 +1,13 @@
 #include "ui/home_view.hpp"
 
-#include "ui/icons.hpp"
-#include "ui/theme.hpp"
+#include "ui/controls.hpp"
 #include "ui/voice_orb.hpp"
 #include "voice/listener.hpp"
 
-#include <QGridLayout>
+#include <QHBoxLayout>
 #include <QLabel>
-#include <QPushButton>
 #include <QStyle>
+#include <QTimer>
 #include <QVBoxLayout>
 
 #include <array>
@@ -16,24 +15,21 @@
 namespace mimi::ui {
 namespace {
 
-// Label, and the utterance it stands for. Chosen to span the range: read the
-// machine, change the machine, reach the web, set a timer. Someone who has
-// never used her should be able to work out what she is for from this grid.
-struct Tile {
+// Label, and the utterance it stands for. Four, not a wall: enough to teach
+// the range -- read the machine, change it, capture it, secure it -- without
+// turning the hero surface into a control panel.
+struct Suggestion {
     const char* label;
-    icons::Glyph glyph;
     // Sent to the router in Japanese, because that is the language she runs in.
     // Only the label the user reads is English.
     const char* utterance;
 };
 
-const std::array<Tile, 6> kTiles{{
-    {"Time",       icons::Glyph::Clock,      "今何時ですか"},
-    {"Battery",    icons::Glyph::Battery,    "バッテリーはどのくらい"},
-    {"System",     icons::Glyph::Display,    "システムの空き容量は"},
-    {"Screenshot", icons::Glyph::Camera,     "スクリーンショットを撮って"},
-    {"Volume down",icons::Glyph::VolumeDown, "音量を下げて"},
-    {"Lock screen",icons::Glyph::Lock,       "画面をロックして"},
+const std::array<Suggestion, 4> kSuggestions{{
+    {"What time is it?", "今何時ですか"},
+    {"Battery status", "バッテリーはどのくらい"},
+    {"Take a screenshot", "スクリーンショットを撮って"},
+    {"Lock the screen", "画面をロックして"},
 }};
 
 }  // namespace
@@ -42,23 +38,23 @@ HomeView::HomeView(QWidget* parent) : QWidget(parent) {
     setObjectName(QStringLiteral("home"));
 
     auto* layout = new QVBoxLayout(this);
-    layout->setContentsMargins(48, 30, 48, 26);
+    layout->setContentsMargins(64, 24, 64, 20);
     layout->setSpacing(0);
 
-    layout->addStretch(2);
+    layout->addStretch(3);
 
     orb_ = new VoiceOrb;
-    orb_->setFixedSize(168, 168);
+    orb_->setFixedSize(200, 200);
     layout->addWidget(orb_, 0, Qt::AlignHCenter);
 
-    layout->addSpacing(22);
+    layout->addSpacing(20);
 
     stateLabel_ = new QLabel(QStringLiteral("STARTING"));
     stateLabel_->setObjectName(QStringLiteral("heroState"));
     stateLabel_->setAlignment(Qt::AlignCenter);
     layout->addWidget(stateLabel_);
 
-    layout->addSpacing(26);
+    layout->addSpacing(28);
 
     // The exchange in progress. What you said sits above, quiet and small;
     // her answer below, large. The eye should land on the answer.
@@ -71,42 +67,42 @@ HomeView::HomeView(QWidget* parent) : QWidget(parent) {
 
     layout->addSpacing(10);
 
-    replyLabel_ = new QLabel(QStringLiteral("Say \u201chey mimi\u201d, or type below"));
+    replyLabel_ = new QLabel(QStringLiteral("Ask anything — or just start talking."));
     replyLabel_->setObjectName(QStringLiteral("heroReply"));
     replyLabel_->setAlignment(Qt::AlignCenter);
     replyLabel_->setWordWrap(true);
-    replyLabel_->setMinimumHeight(72);
+    replyLabel_->setMinimumHeight(76);
     layout->addWidget(replyLabel_);
 
-    layout->addStretch(3);
-    layout->addWidget(buildTiles());
+    layout->addStretch(4);
+    layout->addWidget(buildChips());
+
+    // Thinking is animated, not static: a breathing ellipsis on a slow beat,
+    // so waiting reads as her working rather than the app hanging.
+    thinkingTick_ = new QTimer(this);
+    thinkingTick_->setInterval(400);
+    connect(thinkingTick_, &QTimer::timeout, this, [this] {
+        thinkingBeat_ = (thinkingBeat_ + 1) % 3;
+        replyLabel_->setText(QStringLiteral("·  ·  ·").left(3 * thinkingBeat_ + 1));
+    });
 }
 
-QWidget* HomeView::buildTiles() {
+QWidget* HomeView::buildChips() {
     auto* holder = new QWidget;
-    auto* grid = new QGridLayout(holder);
-    grid->setContentsMargins(0, 0, 0, 0);
-    grid->setHorizontalSpacing(10);
-    grid->setVerticalSpacing(10);
+    auto* row = new QHBoxLayout(holder);
+    row->setContentsMargins(0, 0, 0, 0);
+    row->setSpacing(8);
+    row->addStretch(1);
 
-    int column = 0;
-    int row = 0;
-    for (const auto& tile : kTiles) {
-        auto* button = new QPushButton(QString::fromUtf8(tile.label));
-        button->setObjectName(QStringLiteral("tile"));
-        button->setCursor(Qt::PointingHandCursor);
-        button->setMinimumHeight(46);
-        button->setIcon(icons::icon(tile.glyph, QColor(0xa4, 0xa4, 0xba), 17));
-        button->setIconSize(QSize(17, 17));
-        const QString utterance = QString::fromUtf8(tile.utterance);
-        connect(button, &QPushButton::clicked, this,
+    for (const auto& suggestion : kSuggestions) {
+        auto* chip = new Chip(QString::fromUtf8(suggestion.label));
+        const QString utterance = QString::fromUtf8(suggestion.utterance);
+        connect(chip, &Chip::clicked, this,
                 [this, utterance] { Q_EMIT commandRequested(utterance); });
-        grid->addWidget(button, row, column);
-        if (++column == 3) {
-            column = 0;
-            ++row;
-        }
+        row->addWidget(chip);
     }
+
+    row->addStretch(1);
     return holder;
 }
 
@@ -131,9 +127,16 @@ void HomeView::setLevel(float rms) { orb_->setLevel(rms); }
 void HomeView::setExchange(const QString& said, const QString& replied) {
     saidLabel_->setText(said.isEmpty() ? QString() : QStringLiteral("「%1」").arg(said));
     saidLabel_->setVisible(!said.isEmpty());
-    if (!replied.isEmpty()) replyLabel_->setText(replied);
+    if (!replied.isEmpty()) {
+        thinkingTick_->stop();
+        replyLabel_->setText(replied);
+    }
 }
 
-void HomeView::setThinking() { replyLabel_->setText(QStringLiteral("…")); }
+void HomeView::setThinking() {
+    thinkingBeat_ = 0;
+    replyLabel_->setText(QStringLiteral("·"));
+    thinkingTick_->start();
+}
 
 }  // namespace mimi::ui

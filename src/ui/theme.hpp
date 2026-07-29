@@ -1,34 +1,40 @@
 #pragma once
 
 #include <QColor>
+#include <QEasingCurve>
 
-// Black and pink, held to strictly.
+// The design system: graphite and one electric blue.
 //
-// State is carried by the *intensity* of one hue rather than by a different
-// colour per state. A palette that answers every question with a new colour
-// stops meaning anything -- and the moment an app has five accent hues it
-// reads as a hobby project regardless of how carefully each one was picked.
+// Depth comes from layering -- ambient light, glass, shadow -- never from
+// outlines. The accent is spent sparingly: focus, state, and the assistant
+// herself. Everything else is a step on one graphite ramp, which is what
+// makes the single blue read as intelligence rather than decoration.
 namespace mimi::ui::theme {
 
-// Surfaces, darkest to lightest.
-inline const QColor kBg{0x08, 0x08, 0x0c};        // window
-inline const QColor kSurface{0x10, 0x10, 0x17};   // panels, rail, chrome
-inline const QColor kSurface2{0x18, 0x18, 0x22};  // cards, raised
-inline const QColor kLine{0x24, 0x24, 0x31};      // hairlines
+// Graphite ramp, darkest (the void behind everything) to lightest (raised
+// glass). Each step is one layer of elevation, not a different material.
+inline const QColor kVoid{0x04, 0x05, 0x08};      // ambient base
+inline const QColor kLayer0{0x0a, 0x0c, 0x11};    // window surface
+inline const QColor kLayer1{0x10, 0x13, 0x1a};    // panels
+inline const QColor kLayer2{0x16, 0x1a, 0x23};    // raised glass, cards
 
-// Type.
-inline const QColor kInk{0xf3, 0xf3, 0xf8};       // primary
-inline const QColor kDim{0x87, 0x87, 0x9c};       // secondary
-inline const QColor kFaint{0x4d, 0x4d, 0x60};     // tertiary, timestamps
+// Type, three steps only.
+inline const QColor kInk{0xf2, 0xf5, 0xf9};       // primary
+inline const QColor kDim{0x8a, 0x94, 0xa6};       // secondary
+inline const QColor kFaint{0x51, 0x5b, 0x6e};     // tertiary
 
-// The accent, in four weights.
-inline const QColor kPink{0xff, 0x2d, 0x87};      // primary
-inline const QColor kPinkSoft{0xff, 0x7a, 0xb4};  // highlights, hover
-inline const QColor kPinkDeep{0x9e, 0x18, 0x53};  // resting, dim states
-inline const QColor kPinkGlow{0xff, 0x4d, 0x9c};  // glow
+// The one accent.
+inline const QColor kAccent{0x3d, 0x8b, 0xff};      // electric blue
+inline const QColor kAccentSoft{0x8f, 0xc0, 0xff};  // highlights
+inline const QColor kAccentDeep{0x1d, 0x4f, 0x94};  // resting states
+inline const QColor kAccentGlow{0x4d, 0x9f, 0xff};  // ambient light
 
 // Reserved. Never decorative -- only for things that genuinely went wrong.
 inline const QColor kWarn{0xf5, 0xa5, 0x24};
 inline const QColor kError{0xff, 0x45, 0x60};
+
+// Motion: one duration, one curve, everywhere. Nothing snaps.
+inline constexpr int kMotionMs = 180;
+inline const QEasingCurve kMotion{QEasingCurve::OutCubic};
 
 }  // namespace mimi::ui::theme
