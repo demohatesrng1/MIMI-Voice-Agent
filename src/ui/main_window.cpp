@@ -4,6 +4,7 @@
 #include "core/paths.hpp"
 #include "ui/theme.hpp"
 
+#include <QApplication>
 #include <QCloseEvent>
 #include <QDateTime>
 #include <QFrame>
@@ -12,6 +13,7 @@
 #include <QLineEdit>
 #include <QLocale>
 #include <QPushButton>
+#include <QSignalBlocker>
 #include <QTimer>
 #include <QVBoxLayout>
 
@@ -36,10 +38,23 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     layout->addWidget(buildChatPanel(), 1);
     setCentralWidget(central);
 
+    // The always-on-top puck. Deliberately parentless as a widget so it is its
+    // own top-level window, but owned by this object's lifetime.
+    puck_ = new FloatingOrb;
+    puck_->moveToDefaultCorner();
+    puck_->show();
+    connect(puck_, &FloatingOrb::clicked, this, &MainWindow::toggleWindow);
+    connect(puck_, &FloatingOrb::doubleClicked, this, &MainWindow::onMicClicked);
+    connect(puck_, &FloatingOrb::muteRequested, this,
+            [this](bool muted) { power_->setChecked(!muted); });
+    connect(puck_, &FloatingOrb::quitRequested, qApp, &QApplication::quit);
+
     bridge_ = new VoiceBridge(this);
     connect(bridge_, &VoiceBridge::stateChanged, this, &MainWindow::onState);
-    connect(bridge_, &VoiceBridge::levelChanged, this,
-            [this](float rms, float) { orb_->setLevel(rms); });
+    connect(bridge_, &VoiceBridge::levelChanged, this, [this](float rms, float) {
+        orb_->setLevel(rms);
+        puck_->setLevel(rms);
+    });
     connect(bridge_, &VoiceBridge::heard, this, &MainWindow::onHeard);
     connect(bridge_, &VoiceBridge::bargedIn, this, [this] {
         if (speaker_) speaker_->stop();
@@ -49,6 +64,17 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
 MainWindow::~MainWindow() {
     if (listener_) listener_->stop();
     if (capture_) capture_->stop();
+    delete puck_;  // top-level, so it is not destroyed with the window
+}
+
+void MainWindow::toggleWindow() {
+    if (isVisible() && !isMinimized()) {
+        hide();
+        return;
+    }
+    showNormal();
+    raise();
+    activateWindow();
 }
 
 QWidget* MainWindow::buildSidebar() {
@@ -231,6 +257,7 @@ void MainWindow::startVoice() {
 
 void MainWindow::onState(int state) {
     orb_->setState(state);
+    if (puck_ != nullptr) puck_->setState(state);
     const auto value = static_cast<voice::State>(state);
     // Each state gets its own colour, matching the orb, so the pill and the orb
     // always agree without the user having to read either.
@@ -247,6 +274,15 @@ void MainWindow::onState(int state) {
     status_->setStyleSheet(
         QStringLiteral("color:%1; border-color:%1; background:rgba(255,255,255,14);")
             .arg(QString::fromLatin1(colour)));
+
+    // Keep the button honest. blockSignals stops this from bouncing back into
+    // onListenToggled and pausing the listener we just heard from.
+    if (power_ != nullptr) {
+        const bool live = value != voice::State::Paused;
+        QSignalBlocker blocker(power_);
+        power_->setChecked(live);
+        power_->setText(live ? QStringLiteral("Listening") : QStringLiteral("Muted"));
+    }
 
     if (mic_badge_ != nullptr) {
         const bool live = value != voice::State::Paused;
@@ -276,28 +312,38 @@ void MainWindow::onMicClicked() {
     mic_->setEnabled(false);
     status_->setText(QStringLiteral("go ahead…"));
 
-    // capture_once blocks until the endpointer closes the utterance, so it must
-    // not run on the GUI thread.
-    auto* watcher = new QTimer(this);
-    watcher->setSingleShot(true);
-    connect(watcher, &QTimer::timeout, this, [this, watcher] {
-        watcher->deleteLater();
-        mic_->setEnabled(true);
-    });
-    watcher->start(12000);
-    listener_->capture_once(std::chrono::milliseconds{10000});
+    // capture_once() blocks until the endpointer closes the utterance -- up to
+    // ten seconds. Calling it here would freeze the whole interface, so it goes
+    // to a worker and the result comes back through the event loop.
+    std::thread([this] {
+        const auto heard = listener_->capture_once(std::chrono::milliseconds{10000});
+        const QString text =
+            heard ? QString::fromStdString(*heard) : QString();
+        QMetaObject::invokeMethod(this, [this, text] {
+            mic_->setEnabled(true);
+            if (text.isEmpty()) {
+                status_->setText(QStringLiteral("LISTENING"));
+                return;
+            }
+            chat_->append(Speaker::You, text);
+            respond(text);
+        }, Qt::QueuedConnection);
+    }).detach();
 }
 
 void MainWindow::onListenToggled(bool listening) {
-    if (!listener_) return;
+    if (!listener_) {
+        // Nothing to drive yet; onState will correct the label once it exists.
+        return;
+    }
     if (listening) {
         listener_->resume();
-        power_->setText(QStringLiteral("Listening"));
     } else {
         listener_->pause();
         if (speaker_) speaker_->stop();
-        power_->setText(QStringLiteral("Muted"));
     }
+    // The label follows from onState(), so both it and the status pill are
+    // written in exactly one place.
 }
 
 void MainWindow::respond(const QString& prompt) {
@@ -339,6 +385,13 @@ void MainWindow::say(const QString& text) {
 }
 
 void MainWindow::closeEvent(QCloseEvent* event) {
+    // Closing the window should not stop an assistant that is meant to be
+    // always on. Hide instead; the puck stays, and Quit is in its menu.
+    if (puck_ != nullptr) {
+        hide();
+        event->ignore();
+        return;
+    }
     if (listener_) listener_->stop();
     if (speaker_) speaker_->stop();
     if (capture_) capture_->stop();

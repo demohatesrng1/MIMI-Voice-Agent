@@ -4,6 +4,7 @@
 #include "brain/ollama.hpp"
 #include "brain/router.hpp"
 #include "ui/chat_view.hpp"
+#include "ui/floating_orb.hpp"
 #include "ui/voice_bridge.hpp"
 #include "ui/voice_orb.hpp"
 #include "voice/listener.hpp"
@@ -39,6 +40,7 @@ private Q_SLOTS:
     void onSubmit();
     void onMicClicked();
     void onListenToggled(bool listening);
+    void toggleWindow();
 
 private:
     QWidget* buildSidebar();
@@ -58,6 +60,7 @@ private:
     QPushButton* mic_ = nullptr;
     QPushButton* power_ = nullptr;
 
+    FloatingOrb* puck_ = nullptr;
     VoiceBridge* bridge_ = nullptr;
     std::unique_ptr<audio::Capture> capture_;
     std::unique_ptr<voice::Listener> listener_;

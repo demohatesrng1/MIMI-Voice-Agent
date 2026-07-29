@@ -164,10 +164,12 @@ if(MIMI_BUILD_GUI)
     src/app/main.cpp
     src/ui/main_window.cpp
     src/ui/chat_view.cpp
+    src/ui/floating_orb.cpp
     src/ui/voice_orb.cpp
     src/ui/voice_bridge.hpp     # Q_OBJECT, needs moc
     src/ui/main_window.hpp
     src/ui/chat_view.hpp
+    src/ui/floating_orb.hpp
     src/ui/voice_orb.hpp
   )
   qt_add_resources(mimi_app "theme"
