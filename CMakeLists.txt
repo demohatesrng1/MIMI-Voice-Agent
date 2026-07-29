@@ -169,11 +169,13 @@ if(MIMI_BUILD_GUI)
     src/ui/main_window.cpp
     src/ui/chat_view.cpp
     src/ui/floating_orb.cpp
+    src/ui/mac_window.mm
     src/ui/voice_orb.cpp
     src/ui/voice_bridge.hpp     # Q_OBJECT, needs moc
     src/ui/main_window.hpp
     src/ui/chat_view.hpp
     src/ui/floating_orb.hpp
+    src/ui/mac_window.hpp
     src/ui/voice_orb.hpp
   )
   qt_add_resources(mimi_app "theme"
@@ -193,7 +195,11 @@ if(MIMI_BUILD_GUI)
     BASE   "assets"
     FILES  assets/mimi_512.png)
 
-  target_link_libraries(mimi_app PRIVATE Qt6::Widgets mimi_voice mimi_brain)
+  target_link_libraries(mimi_app PRIVATE Qt6::Widgets mimi_voice mimi_brain
+    "-framework AppKit")
+
+  set_source_files_properties(src/ui/mac_window.mm PROPERTIES
+    COMPILE_FLAGS "-fobjc-arc -std=c++20")
 
   set_target_properties(mimi_app PROPERTIES
     OUTPUT_NAME "Mimi"

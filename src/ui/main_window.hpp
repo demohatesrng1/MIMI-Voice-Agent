@@ -31,6 +31,10 @@ public:
     // the user can read instead of a window that never appears.
     void startVoice();
 
+    // Applies the native title-bar treatment. Must run after show(), because it
+    // needs a real NSWindow to configure.
+    void applyNativeChrome();
+
 protected:
     void closeEvent(QCloseEvent* event) override;
 
@@ -43,22 +47,26 @@ private Q_SLOTS:
     void toggleWindow();
 
 private:
-    QWidget* buildSidebar();
+    QWidget* buildTitleBar();
+    QWidget* buildRail();
     QWidget* buildChatPanel();
+    QWidget* buildComposer();
     // Runs the router on a worker thread and posts the reply back. Routing can
     // block for seconds on an Ollama call, so it must never touch the GUI thread.
     void respond(const QString& prompt);
     void deliver(const QString& reply, const QString& action, bool acted);
     void say(const QString& text);
+    void clearSuggestions();
 
     ChatView* chat_ = nullptr;
     VoiceOrb* orb_ = nullptr;
     QLabel* status_ = nullptr;
-    QLabel* mic_badge_ = nullptr;
-    QLabel* subtitle_ = nullptr;
+    QLabel* statusDot_ = nullptr;
+    QLabel* micBadge_ = nullptr;
     QLineEdit* input_ = nullptr;
     QPushButton* mic_ = nullptr;
     QPushButton* power_ = nullptr;
+    QWidget* suggestions_ = nullptr;
 
     FloatingOrb* puck_ = nullptr;
     VoiceBridge* bridge_ = nullptr;
@@ -67,8 +75,6 @@ private:
     std::unique_ptr<voice::Speaker> speaker_;
     std::unique_ptr<brain::Ollama> ollama_;
     std::unique_ptr<brain::Router> router_;
-
-    int pending_bubble_ = 0;
 };
 
 }  // namespace mimi::ui

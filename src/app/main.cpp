@@ -36,6 +36,8 @@ int main(int argc, char** argv) {
 
     mimi::ui::MainWindow window;
     window.show();
+    // Needs a real NSWindow, so it has to follow show().
+    window.applyNativeChrome();
 
     // After show(), so the window is on screen before the models load.
     window.startVoice();
