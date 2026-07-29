@@ -177,11 +177,24 @@ if(MIMI_BUILD_GUI)
     BASE   "src/ui"
     FILES  src/ui/theme.qss)
 
+  # The icon has to be copied into Contents/Resources and named in the plist;
+  # setting only one of the two gives a bundle with a generic icon.
+  set(MIMI_ICNS "${CMAKE_CURRENT_SOURCE_DIR}/assets/Mimi.icns")
+  target_sources(mimi_app PRIVATE "${MIMI_ICNS}")
+  set_source_files_properties("${MIMI_ICNS}" PROPERTIES
+    MACOSX_PACKAGE_LOCATION "Resources")
+
+  qt_add_resources(mimi_app "appicon"
+    PREFIX "/"
+    BASE   "assets"
+    FILES  assets/mimi_512.png)
+
   target_link_libraries(mimi_app PRIVATE Qt6::Widgets mimi_voice mimi_brain)
 
   set_target_properties(mimi_app PROPERTIES
     OUTPUT_NAME "Mimi"
     MACOSX_BUNDLE_BUNDLE_NAME "Mimi"
+    MACOSX_BUNDLE_ICON_FILE "Mimi.icns"
     MACOSX_BUNDLE_GUI_IDENTIFIER "com.mimi.assistant"
     MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"
     MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}"

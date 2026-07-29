@@ -6,6 +6,7 @@
 
 #include <QApplication>
 #include <QFile>
+#include <QIcon>
 #include <QFontDatabase>
 
 namespace {
@@ -26,6 +27,9 @@ int main(int argc, char** argv) {
     app.setOrganizationName(QStringLiteral("Mimi"));
     app.setApplicationDisplayName(QStringLiteral("Mimi ミミ"));
     app.setStyleSheet(load_stylesheet());
+    // Also set at runtime: the bundle icon covers Finder and the Dock, this
+    // covers the window and the app switcher when run from a build tree.
+    app.setWindowIcon(QIcon(QStringLiteral(":/mimi_512.png")));
 
     mimi::log::info("app", "data {}", mimi::paths::data_dir().string());
     mimi::log::info("app", "models {}", mimi::paths::models_dir().string());
