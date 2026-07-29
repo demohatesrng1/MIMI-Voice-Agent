@@ -1,44 +1,51 @@
 #pragma once
 
-#include "ui/voice_orb.hpp"
+#include "voice/listener.hpp"
 
+#include <QPixmap>
 #include <QPoint>
 #include <QWidget>
 
 class QMenu;
+class QPropertyAnimation;
 
 namespace mimi::ui {
 
 // A small always-on-top puck that lives above every other window.
 //
 // The point of an always-listening assistant is that you do not go to her, so
-// having her only exist inside a window you have to find defeats it. This is a
-// circular, frameless, click-through-free window that shows the same state the
-// main orb does: colour for what she is doing, ring for what she is hearing.
+// having her only exist inside a window you have to find defeats it.
 //
-// Behaviour:
-//   drag         move it anywhere, it snaps to the nearest screen edge
+// The artwork fills the whole disc rather than sitting in the middle of one:
+// at this size a portrait inset inside a frame reads as a generic widget, while
+// a full-bleed circle reads as *her*. Everything the orb needs to say -- what
+// she is doing, what she is hearing, whether she is muted -- is carried by the
+// ring around the edge instead of by anything drawn on top of her.
+//
+//   drag         move it, snaps to the nearest screen edge
 //   click        show / hide the main window
 //   double click start listening straight away, no wake word
 //   right click  mute, open, quit
-//
-// Qt::Tool keeps it out of the Dock and the app switcher, which is what makes
-// it read as an overlay rather than a second application.
 class FloatingOrb : public QWidget {
     Q_OBJECT
+    Q_PROPERTY(qreal phase READ phase WRITE setPhase)
+    Q_PROPERTY(qreal spin READ spin WRITE setSpin)
 
 public:
     explicit FloatingOrb(QWidget* parent = nullptr);
 
     void setState(int state);
     void setLevel(float rms);
-
-    // Puts it near a screen corner on first run.
     void moveToDefaultCorner();
 
+    qreal phase() const noexcept { return phase_; }
+    void setPhase(qreal phase);
+    qreal spin() const noexcept { return angle_; }
+    void setSpin(qreal spin);
+
 Q_SIGNALS:
-    void clicked();        // toggle the main window
-    void doubleClicked();  // push-to-talk
+    void clicked();
+    void doubleClicked();
     void muteRequested(bool muted);
     void quitRequested();
 
@@ -53,15 +60,26 @@ protected:
     void leaveEvent(QEvent* event) override;
 
 private:
+    QColor accent() const;
+    // Circle-masked artwork at the current size. Cached: masking on every frame
+    // would be pointless work twelve times a second.
+    const QPixmap& portrait() const;
     void snapToEdge();
 
-    VoiceOrb* orb_ = nullptr;
+    voice::State state_ = voice::State::Idle;
+    qreal phase_ = 0.0;
+    qreal angle_ = 0.0;
+    qreal level_ = 0.0;
+
+    mutable QPixmap portrait_cache_;
+    mutable QPixmap muted_cache_;
+
     QMenu* menu_ = nullptr;
+    QPropertyAnimation* pulse_ = nullptr;
+    QPropertyAnimation* spin_ = nullptr;
 
     QPoint press_offset_;
     bool dragging_ = false;
-    // A press that never moved is a click; anything past this is a drag, so a
-    // slightly shaky click still opens the window.
     bool moved_beyond_threshold_ = false;
     bool hovered_ = false;
     bool muted_ = false;
