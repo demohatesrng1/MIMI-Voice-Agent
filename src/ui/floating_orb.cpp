@@ -103,15 +103,15 @@ void FloatingOrb::setLevel(float rms) {
 }
 
 QColor FloatingOrb::accent() const {
-    if (muted_) return QColor(0xe0, 0x5a, 0x7a);
+    if (muted_) return theme::kError;
     switch (state_) {
-        case voice::State::Idle:      return theme::kViolet;
-        case voice::State::Listening: return theme::kCyan;
-        case voice::State::Thinking:  return theme::kAmber;
-        case voice::State::Speaking:  return theme::kGreen;
-        case voice::State::Paused:    return theme::kDim;
+        case voice::State::Idle:      return theme::kPinkDeep;
+        case voice::State::Listening: return theme::kPink;
+        case voice::State::Thinking:  return theme::kPinkSoft;
+        case voice::State::Speaking:  return theme::kInk;
+        case voice::State::Paused:    return theme::kFaint;
     }
-    return theme::kViolet;
+    return theme::kPinkDeep;
 }
 
 const QPixmap& FloatingOrb::portrait() const {
@@ -191,7 +191,7 @@ void FloatingOrb::paintEvent(QPaintEvent*) {
     if (!face.isNull()) {
         painter.drawPixmap(QPointF(centre.x() - radius, centre.y() - radius), face);
     } else {
-        painter.setBrush(theme::kPanel2);
+        painter.setBrush(theme::kSurface2);
         painter.drawEllipse(centre, radius, radius);
     }
 
@@ -248,7 +248,7 @@ void FloatingOrb::paintEvent(QPaintEvent*) {
     }
 
     if (muted_) {
-        QPen slash(QColor(0xe0, 0x5a, 0x7a, 235), 3.0);
+        QPen slash(QColor(theme::kError.red(), theme::kError.green(), theme::kError.blue(), 235), 3.0);
         slash.setCapStyle(Qt::RoundCap);
         painter.setPen(slash);
         const qreal d = radius * 0.62;

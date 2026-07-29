@@ -120,14 +120,17 @@ const QPixmap& VoiceOrb::portrait(int diameter) const {
 }
 
 QColor VoiceOrb::accent() const {
+    // One hue at four weights. Resting is deep and quiet, hearing you is the
+    // full accent, thinking is lighter, speaking goes almost white -- so the
+    // state is read from brightness without needing a legend.
     switch (state_) {
-        case voice::State::Idle:      return theme::kViolet;
-        case voice::State::Listening: return theme::kCyan;
-        case voice::State::Thinking:  return theme::kAmber;
-        case voice::State::Speaking:  return theme::kGreen;
-        case voice::State::Paused:    return theme::kDim;
+        case voice::State::Idle:      return theme::kPinkDeep;
+        case voice::State::Listening: return theme::kPink;
+        case voice::State::Thinking:  return theme::kPinkSoft;
+        case voice::State::Speaking:  return theme::kInk;
+        case voice::State::Paused:    return theme::kFaint;
     }
-    return theme::kViolet;
+    return theme::kPinkDeep;
 }
 
 void VoiceOrb::paintEvent(QPaintEvent*) {

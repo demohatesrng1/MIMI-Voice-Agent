@@ -167,14 +167,22 @@ if(MIMI_BUILD_GUI)
   qt_add_executable(mimi_app MACOSX_BUNDLE
     src/app/main.cpp
     src/ui/main_window.cpp
-    src/ui/chat_view.cpp
     src/ui/floating_orb.cpp
+    src/ui/skills_view.cpp
+    src/ui/activity_view.cpp
+    src/ui/home_view.cpp
+    src/ui/nav_rail.cpp
+    src/ui/icons.cpp
     src/ui/mac_window.mm
     src/ui/voice_orb.cpp
     src/ui/voice_bridge.hpp     # Q_OBJECT, needs moc
     src/ui/main_window.hpp
-    src/ui/chat_view.hpp
     src/ui/floating_orb.hpp
+    src/ui/skills_view.hpp
+    src/ui/activity_view.hpp
+    src/ui/home_view.hpp
+    src/ui/nav_rail.hpp
+    src/ui/icons.hpp
     src/ui/mac_window.hpp
     src/ui/voice_orb.hpp
   )

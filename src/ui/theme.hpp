@@ -2,21 +2,33 @@
 
 #include <QColor>
 
-// The palette from static/index.html, so the Qt app and the old web UI are
-// recognisably the same product. Kept in C++ as well as QSS because the voice
-// orb is custom-painted and stylesheets cannot reach it.
+// Black and pink, held to strictly.
+//
+// State is carried by the *intensity* of one hue rather than by a different
+// colour per state. A palette that answers every question with a new colour
+// stops meaning anything -- and the moment an app has five accent hues it
+// reads as a hobby project regardless of how carefully each one was picked.
 namespace mimi::ui::theme {
 
-inline const QColor kBg{0x0b, 0x0e, 0x1a};
-inline const QColor kBg2{0x11, 0x15, 0x27};
-inline const QColor kPanel{0x16, 0x1b, 0x30};
-inline const QColor kPanel2{0x1b, 0x21, 0x40};
-inline const QColor kLine{0x26, 0x2d, 0x52};
-inline const QColor kInk{0xe8, 0xea, 0xf6};
-inline const QColor kDim{0x88, 0x90, 0xb5};
-inline const QColor kViolet{0x8b, 0x7c, 0xf8};
-inline const QColor kCyan{0x4d, 0xd8, 0xe6};
-inline const QColor kGreen{0x58, 0xe2, 0x8b};
-inline const QColor kAmber{0xf5, 0xc4, 0x5e};
+// Surfaces, darkest to lightest.
+inline const QColor kBg{0x08, 0x08, 0x0c};        // window
+inline const QColor kSurface{0x10, 0x10, 0x17};   // panels, rail, chrome
+inline const QColor kSurface2{0x18, 0x18, 0x22};  // cards, raised
+inline const QColor kLine{0x24, 0x24, 0x31};      // hairlines
+
+// Type.
+inline const QColor kInk{0xf3, 0xf3, 0xf8};       // primary
+inline const QColor kDim{0x87, 0x87, 0x9c};       // secondary
+inline const QColor kFaint{0x4d, 0x4d, 0x60};     // tertiary, timestamps
+
+// The accent, in four weights.
+inline const QColor kPink{0xff, 0x2d, 0x87};      // primary
+inline const QColor kPinkSoft{0xff, 0x7a, 0xb4};  // highlights, hover
+inline const QColor kPinkDeep{0x9e, 0x18, 0x53};  // resting, dim states
+inline const QColor kPinkGlow{0xff, 0x4d, 0x9c};  // glow
+
+// Reserved. Never decorative -- only for things that genuinely went wrong.
+inline const QColor kWarn{0xf5, 0xa5, 0x24};
+inline const QColor kError{0xff, 0x45, 0x60};
 
 }  // namespace mimi::ui::theme

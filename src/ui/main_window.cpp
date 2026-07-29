@@ -2,6 +2,7 @@
 
 #include "core/log.hpp"
 #include "core/paths.hpp"
+#include "ui/icons.hpp"
 #include "ui/mac_window.hpp"
 #include "ui/theme.hpp"
 
@@ -11,31 +12,19 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
+#include <QPalette>
 #include <QPushButton>
-#include <QSignalBlocker>
+#include <QStackedWidget>
 #include <QTimer>
 #include <QVBoxLayout>
 
-#include <array>
 #include <thread>
 
 namespace mimi::ui {
 namespace {
 
 constexpr std::string_view kTag = "ui";
-
-constexpr int kTitleBarHeight = 46;
-constexpr int kRailWidth = 68;
-
-// Shown until the first exchange. Chosen to span the three different kinds of
-// thing she does -- read the machine, change it, answer a question -- so the
-// range is obvious without a manual.
-constexpr std::array<const char*, 4> kSuggestions{
-    "今何時ですか",
-    "バッテリーは？",
-    "ユーチューブを開いて",
-    "5分後に休憩と教えて",
-};
+constexpr int kTitleBarHeight = 44;
 
 QFrame* hairline(Qt::Orientation orientation) {
     auto* line = new QFrame;
@@ -49,18 +38,35 @@ QFrame* hairline(Qt::Orientation orientation) {
     return line;
 }
 
+QWidget* placeholder(const QString& title, const QString& body) {
+    auto* page = new QWidget;
+    auto* layout = new QVBoxLayout(page);
+    layout->setContentsMargins(30, 26, 30, 26);
+    layout->setSpacing(6);
+
+    auto* heading = new QLabel(title);
+    heading->setObjectName(QStringLiteral("sectionHead"));
+    layout->addWidget(heading);
+
+    auto* text = new QLabel(body);
+    text->setObjectName(QStringLiteral("sectionLead"));
+    text->setWordWrap(true);
+    layout->addWidget(text);
+
+    layout->addStretch(1);
+    return page;
+}
+
 }  // namespace
 
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     setWindowTitle(QStringLiteral("Mimi"));
-    resize(1080, 720);
-    setMinimumSize(880, 600);
+    resize(1120, 760);
+    setMinimumSize(940, 660);
 
     auto* root = new QWidget;
     root->setObjectName(QStringLiteral("root"));
 
-    // The title bar spans the full width above everything, the way a browser's
-    // chrome does -- not a strip bolted onto one pane.
     auto* column = new QVBoxLayout(root);
     column->setContentsMargins(0, 0, 0, 0);
     column->setSpacing(0);
@@ -71,26 +77,74 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     auto* row = new QHBoxLayout(body);
     row->setContentsMargins(0, 0, 0, 0);
     row->setSpacing(0);
-    row->addWidget(buildRail());
+
+    rail_ = new NavRail;
+    row->addWidget(rail_);
     row->addWidget(hairline(Qt::Vertical));
-    row->addWidget(buildChatPanel(), 1);
+
+    // The pages, plus one composer shared across all of them. Typing should
+    // work wherever you happen to be, rather than only on a "chat" tab.
+    auto* right = new QWidget;
+    auto* rightColumn = new QVBoxLayout(right);
+    rightColumn->setContentsMargins(0, 0, 0, 0);
+    rightColumn->setSpacing(0);
+
+    pages_ = new QStackedWidget;
+    home_ = new HomeView;
+    activity_ = new ActivityView;
+    skills_ = new SkillsView;
+    settings_ = placeholder(
+        QStringLiteral("SETTINGS"),
+        QStringLiteral("Voice, model and wake-word settings will live here."));
+
+    pages_->addWidget(home_);
+    pages_->addWidget(activity_);
+    pages_->addWidget(skills_);
+    pages_->addWidget(settings_);
+    rightColumn->addWidget(pages_, 1);
+    row->addWidget(right, 1);
 
     column->addWidget(body, 1);
     setCentralWidget(root);
+
+    connect(rail_, &NavRail::pageSelected, this, [this](int page) {
+        pages_->setCurrentIndex(page);
+    });
+    connect(rail_, &NavRail::muteToggled, this, [this](bool muted) {
+        if (!listener_) return;
+        if (muted) {
+            listener_->pause();
+            if (speaker_) speaker_->stop();
+        } else {
+            listener_->resume();
+        }
+    });
+    connect(home_, &HomeView::commandRequested, this, &MainWindow::ask);
+    connect(skills_, &SkillsView::commandRequested, this, [this](const QString& utterance) {
+        rail_->setCurrent(NavRail::Home);
+        pages_->setCurrentIndex(NavRail::Home);
+        ask(utterance);
+    });
 
     puck_ = new FloatingOrb;
     puck_->moveToDefaultCorner();
     puck_->show();
     connect(puck_, &FloatingOrb::clicked, this, &MainWindow::toggleWindow);
     connect(puck_, &FloatingOrb::doubleClicked, this, &MainWindow::onMicClicked);
-    connect(puck_, &FloatingOrb::muteRequested, this,
-            [this](bool muted) { power_->setChecked(!muted); });
+    connect(puck_, &FloatingOrb::muteRequested, this, [this](bool muted) {
+        if (!listener_) return;
+        if (muted) {
+            listener_->pause();
+        } else {
+            listener_->resume();
+        }
+    });
     connect(puck_, &FloatingOrb::quitRequested, qApp, &QApplication::quit);
 
     bridge_ = new VoiceBridge(this);
     connect(bridge_, &VoiceBridge::stateChanged, this, &MainWindow::onState);
     connect(bridge_, &VoiceBridge::levelChanged, this, [this](float rms, float) {
-        orb_->setLevel(rms);
+        home_->setLevel(rms);
         puck_->setLevel(rms);
     });
     connect(bridge_, &VoiceBridge::heard, this, &MainWindow::onHeard);
@@ -107,7 +161,6 @@ MainWindow::~MainWindow() {
 
 void MainWindow::applyNativeChrome() {
     adopt_native_titlebar(this);
-    // Re-inset now that the real button geometry can be measured.
     if (auto* spacer = findChild<QWidget*>(QStringLiteral("trafficLights"))) {
         spacer->setFixedWidth(traffic_light_inset());
     }
@@ -121,158 +174,71 @@ QWidget* MainWindow::buildTitleBar() {
     bar->setFixedHeight(kTitleBarHeight);
 
     auto* layout = new QHBoxLayout(bar);
-    layout->setContentsMargins(0, 0, 16, 0);
+    layout->setContentsMargins(0, 0, 14, 0);
     layout->setSpacing(0);
 
-    // The traffic lights float over our content with a full-size content view,
-    // so reserve their width rather than letting them land on a label.
+    // Reserved for the traffic lights, which float over the content once the
+    // window uses a full-size content view.
     auto* lights = new QWidget;
     lights->setObjectName(QStringLiteral("trafficLights"));
     lights->setFixedWidth(78);
     layout->addWidget(lights);
 
-    auto* name = new QLabel(QStringLiteral("Mimi"));
-    name->setObjectName(QStringLiteral("titleName"));
+    auto* name = new QLabel(QStringLiteral("MIMI"));
+    name->setObjectName(QStringLiteral("wordmark"));
     layout->addWidget(name);
-
-    layout->addSpacing(8);
-    auto* jp = new QLabel(QStringLiteral("ミミ"));
-    jp->setObjectName(QStringLiteral("titleJp"));
-    layout->addWidget(jp);
 
     layout->addStretch(1);
 
-    micBadge_ = new QLabel(QStringLiteral("MIC"));
+    // The command field lives here, centred, the way VS Code puts its search
+    // in the title bar. It gives the bar a job -- an empty strip with a label
+    // on each end is wasted chrome -- and it is reachable from every page.
+    input_ = new QLineEdit;
+    input_->setObjectName(QStringLiteral("omni"));
+    input_->setPlaceholderText(QStringLiteral("Ask Mimi, or type a command"));
+    input_->setFixedWidth(420);
+    input_->setAlignment(Qt::AlignCenter);
+    input_->setClearButtonEnabled(false);
+    // Placeholder colour comes from the palette, not the stylesheet: QSS has no
+    // selector that reaches it, so styling it in the .qss silently does nothing.
+    {
+        QPalette palette = input_->palette();
+        palette.setColor(QPalette::PlaceholderText, QColor(0x5a, 0x5a, 0x70));
+        input_->setPalette(palette);
+    }
+    connect(input_, &QLineEdit::returnPressed, this, &MainWindow::onSubmit);
+    layout->addWidget(input_);
+
+    mic_ = new QPushButton;
+    mic_->setObjectName(QStringLiteral("micInline"));
+    mic_->setFixedSize(28, 28);
+    mic_->setIconSize(QSize(16, 16));
+    mic_->setIcon(icons::icon(icons::Glyph::Mic, QColor(0x87, 0x87, 0x9c), 16));
+    mic_->setCursor(Qt::PointingHandCursor);
+    mic_->setToolTip(QStringLiteral("Speak now, no wake word needed"));
+    connect(mic_, &QPushButton::clicked, this, &MainWindow::onMicClicked);
+    layout->addSpacing(6);
+    layout->addWidget(mic_);
+
+    layout->addStretch(1);
+
+    micBadge_ = new QLabel(QStringLiteral("REC"));
     micBadge_->setObjectName(QStringLiteral("micBadge"));
     micBadge_->setToolTip(QStringLiteral("The microphone is open"));
     layout->addWidget(micBadge_);
-    layout->addSpacing(14);
+    layout->addSpacing(12);
 
-    // A coloured dot and a lowercase word. Quieter than a filled pill, and the
-    // width never changes as the text does, so nothing shifts around it.
-    statusDot_ = new QLabel(QStringLiteral("●"));
+    statusDot_ = new QLabel(QStringLiteral("\u25cf"));
     statusDot_->setObjectName(QStringLiteral("statusDot"));
     layout->addWidget(statusDot_);
     layout->addSpacing(7);
 
-    status_ = new QLabel(QStringLiteral("starting"));
-    status_->setObjectName(QStringLiteral("statusText"));
-    layout->addWidget(status_);
+    statusText_ = new QLabel(QStringLiteral("starting"));
+    statusText_->setObjectName(QStringLiteral("statusText"));
+    statusText_->setMinimumWidth(74);
+    layout->addWidget(statusText_);
 
     return bar;
-}
-
-// ---------------------------------------------------------------------- rail
-
-QWidget* MainWindow::buildRail() {
-    auto* rail = new QWidget;
-    rail->setObjectName(QStringLiteral("rail"));
-    rail->setFixedWidth(kRailWidth);
-
-    auto* layout = new QVBoxLayout(rail);
-    layout->setContentsMargins(0, 16, 0, 16);
-    layout->setSpacing(0);
-
-    orb_ = new VoiceOrb;
-    orb_->setFixedSize(54, 54);
-    layout->addWidget(orb_, 0, Qt::AlignHCenter);
-
-    layout->addStretch(1);
-
-    power_ = new QPushButton(QStringLiteral("◉"));
-    power_->setObjectName(QStringLiteral("power"));
-    power_->setCheckable(true);
-    power_->setChecked(true);
-    power_->setFixedSize(34, 34);
-    power_->setCursor(Qt::PointingHandCursor);
-    power_->setToolTip(QStringLiteral("Mute the microphone"));
-    connect(power_, &QPushButton::toggled, this, &MainWindow::onListenToggled);
-    layout->addWidget(power_, 0, Qt::AlignHCenter);
-
-    return rail;
-}
-
-// ----------------------------------------------------------------- chat pane
-
-QWidget* MainWindow::buildChatPanel() {
-    auto* panel = new QWidget;
-    panel->setObjectName(QStringLiteral("chatPanel"));
-
-    auto* layout = new QVBoxLayout(panel);
-    layout->setContentsMargins(0, 0, 0, 0);
-    layout->setSpacing(0);
-
-    chat_ = new ChatView;
-    layout->addWidget(chat_, 1);
-
-    // An empty pane with a blinking cursor tells a new user nothing about what
-    // she can do, so offer a few real commands until the first exchange.
-    suggestions_ = new QWidget;
-    suggestions_->setObjectName(QStringLiteral("suggestions"));
-    auto* chips = new QHBoxLayout(suggestions_);
-    chips->setContentsMargins(26, 0, 26, 12);
-    chips->setSpacing(8);
-    for (const char* text : kSuggestions) {
-        auto* chip = new QPushButton(QString::fromUtf8(text));
-        chip->setObjectName(QStringLiteral("chip"));
-        chip->setCursor(Qt::PointingHandCursor);
-        connect(chip, &QPushButton::clicked, this, [this, chip] {
-            input_->setText(chip->text());
-            onSubmit();
-        });
-        chips->addWidget(chip);
-    }
-    chips->addStretch(1);
-    layout->addWidget(suggestions_);
-
-    layout->addWidget(hairline(Qt::Horizontal));
-    layout->addWidget(buildComposer());
-    return panel;
-}
-
-QWidget* MainWindow::buildComposer() {
-    auto* bar = new QWidget;
-    bar->setObjectName(QStringLiteral("composer"));
-
-    auto* layout = new QHBoxLayout(bar);
-    layout->setContentsMargins(20, 14, 20, 18);
-    layout->setSpacing(0);
-
-    // One field with its buttons inside the border, rather than three separate
-    // controls in a row. Fewer edges, and it reads as a single place to type.
-    auto* field = new QWidget;
-    field->setObjectName(QStringLiteral("field"));
-    auto* inner = new QHBoxLayout(field);
-    inner->setContentsMargins(7, 6, 7, 6);
-    inner->setSpacing(8);
-
-    mic_ = new QPushButton(QStringLiteral("🎙"));
-    mic_->setObjectName(QStringLiteral("mic"));
-    mic_->setFixedSize(30, 30);
-    mic_->setCursor(Qt::PointingHandCursor);
-    mic_->setToolTip(QStringLiteral("Speak now, no wake word needed"));
-    connect(mic_, &QPushButton::clicked, this, &MainWindow::onMicClicked);
-    inner->addWidget(mic_);
-
-    input_ = new QLineEdit;
-    input_->setObjectName(QStringLiteral("input"));
-    input_->setPlaceholderText(QStringLiteral("聞きたいことを入力…"));
-    connect(input_, &QLineEdit::returnPressed, this, &MainWindow::onSubmit);
-    inner->addWidget(input_, 1);
-
-    auto* send = new QPushButton(QStringLiteral("↵"));
-    send->setObjectName(QStringLiteral("send"));
-    send->setFixedSize(30, 30);
-    send->setCursor(Qt::PointingHandCursor);
-    connect(send, &QPushButton::clicked, this, &MainWindow::onSubmit);
-    inner->addWidget(send);
-
-    layout->addWidget(field);
-    return bar;
-}
-
-void MainWindow::clearSuggestions() {
-    if (suggestions_ != nullptr && suggestions_->isVisible()) suggestions_->hide();
 }
 
 // ------------------------------------------------------------------- startup
@@ -285,8 +251,6 @@ void MainWindow::startVoice() {
     config.vad_model = models / "silero_vad.onnx";
     config.whisper_model = models / "ggml-small.bin";
     config.language = "ja";
-    // Empty on purpose: ggml-tiny cannot spot the wake word in Japanese, so the
-    // accurate model does the gating and the command in one decode.
     config.gate_model.clear();
 
     try {
@@ -295,7 +259,9 @@ void MainWindow::startVoice() {
         router_->on_reminder([this](const std::string& text) {
             const QString message = QString::fromStdString(text);
             QMetaObject::invokeMethod(this, [this, message] {
-                chat_->append(Speaker::Mimi, QStringLiteral("⏰  %1").arg(message));
+                home_->setExchange(QString(), message);
+                activity_->record(QStringLiteral("Reminder"), message,
+                                  QStringLiteral("reminder"), true);
                 say(message);
             }, Qt::QueuedConnection);
         });
@@ -307,9 +273,7 @@ void MainWindow::startVoice() {
         listener_ = std::make_unique<voice::Listener>(*capture_, std::move(config));
         bridge_->attach(*listener_);
 
-        const int loading = chat_->append(Speaker::System, QStringLiteral("起動中…"));
-
-        QTimer::singleShot(0, this, [this, loading] {
+        QTimer::singleShot(0, this, [this] {
             const bool brain_up = ollama_->ensure_running();
             const bool model_ok = brain_up && ollama_->model_available();
             if (model_ok) ollama_->warmup();
@@ -317,105 +281,120 @@ void MainWindow::startVoice() {
 
             listener_->warmup();
             listener_->start();
-            chat_->remove(loading);
 
             if (!brain_up) {
-                chat_->append(Speaker::System,
-                              QStringLiteral("Ollama を起動できませんでした。"));
+                note(QStringLiteral("Could not start Ollama"));
             } else if (!model_ok) {
-                chat_->append(Speaker::System,
-                              QStringLiteral("モデル %1 がありません。")
-                                  .arg(QString::fromStdString(ollama_->config().model)));
+                note(QStringLiteral("Model %1 is not installed")
+                         .arg(QString::fromStdString(ollama_->config().model)));
+            } else {
+                home_->setExchange(QString(),
+                                   QStringLiteral("Hello. I'm Mimi.\n"
+                                                  "Say \u201chey mimi\u201d whenever you need me."));
+                say(QStringLiteral("こんにちは。ミミです。"));
             }
-            chat_->append(Speaker::Mimi,
-                          QStringLiteral("こんにちは。ミミです。\n"
-                                         "「ねえミミ」と呼んでください。"));
-            say(QStringLiteral("こんにちは。ミミです。"));
         });
     } catch (const std::exception& e) {
+        // Report what actually failed. Every startup exception used to be
+        // announced as a microphone problem, which sent me hunting the wrong
+        // thing when the real fault was a missing model file.
         log::error(kTag, "voice startup failed: {}", e.what());
-        status_->setText(QStringLiteral("no microphone"));
-        chat_->append(Speaker::System,
-                      QStringLiteral("Voice is offline: %1").arg(QString::fromUtf8(e.what())));
+        note(QStringLiteral("Startup failed: %1").arg(QString::fromUtf8(e.what())));
     }
+}
+
+void MainWindow::note(const QString& message) {
+    home_->setExchange(QString(), message);
+    activity_->record(QStringLiteral("System"), message, QString(), false);
 }
 
 // --------------------------------------------------------------------- state
 
 void MainWindow::onState(int state) {
-    orb_->setState(state);
+    home_->setState(state);
     if (puck_ != nullptr) puck_->setState(state);
 
     const auto value = static_cast<voice::State>(state);
     const char* label = "listening";
-    const char* colour = "#4dd8e6";
+    const char* colour = "#ff2d87";
     switch (value) {
-        case voice::State::Idle:      label = "listening";   colour = "#4dd8e6"; break;
-        case voice::State::Listening: label = "hearing you"; colour = "#4dd8e6"; break;
-        case voice::State::Thinking:  label = "thinking";    colour = "#f5c45e"; break;
-        case voice::State::Speaking:  label = "speaking";    colour = "#58e28b"; break;
-        case voice::State::Paused:    label = "muted";       colour = "#6b7396"; break;
+        case voice::State::Idle:      label = "listening";   colour = "#9e1853"; break;
+        case voice::State::Listening: label = "hearing you"; colour = "#ff2d87"; break;
+        case voice::State::Thinking:  label = "thinking";    colour = "#ff7ab4"; break;
+        case voice::State::Speaking:  label = "speaking";    colour = "#f3f3f8"; break;
+        case voice::State::Paused:    label = "muted";       colour = "#4d4d60"; break;
     }
-    status_->setText(QString::fromLatin1(label));
-    if (statusDot_ != nullptr) {
-        statusDot_->setStyleSheet(QStringLiteral("color:%1;")
-                                      .arg(QString::fromLatin1(colour)));
-    }
+    statusText_->setText(QString::fromLatin1(label));
+    statusDot_->setStyleSheet(QStringLiteral("color:%1;").arg(QString::fromLatin1(colour)));
 
-    // Button and status can never disagree: both are written here, once.
-    if (power_ != nullptr) {
-        const bool live = value != voice::State::Paused;
-        QSignalBlocker blocker(power_);
-        power_->setChecked(live);
-        power_->setToolTip(live ? QStringLiteral("Mute the microphone")
-                                : QStringLiteral("Unmute the microphone"));
-    }
-    if (micBadge_ != nullptr) micBadge_->setVisible(value != voice::State::Paused);
+    const bool live = value != voice::State::Paused;
+    if (micBadge_ != nullptr) micBadge_->setVisible(live);
+    if (rail_ != nullptr) rail_->setListening(live);
 }
 
+// -------------------------------------------------------------------- input
+
 void MainWindow::onHeard(const QString& text, bool followUp) {
-    clearSuggestions();
-    chat_->append(Speaker::You, followUp ? text + QStringLiteral("  ↩") : text);
-    respond(text);
+    Q_UNUSED(followUp);
+    ask(text);
 }
 
 void MainWindow::onSubmit() {
     const QString text = input_->text().trimmed();
     if (text.isEmpty()) return;
     input_->clear();
-    clearSuggestions();
-    chat_->append(Speaker::You, text);
-    respond(text);
+    ask(text);
 }
 
 void MainWindow::onMicClicked() {
     if (!listener_) return;
     mic_->setEnabled(false);
-    status_->setText(QStringLiteral("go ahead"));
 
-    // capture_once() blocks until the endpointer closes the utterance, up to ten
-    // seconds, so it cannot run on the GUI thread.
+    // capture_once() blocks until the endpointer closes the utterance, so it
+    // cannot run on the GUI thread.
     std::thread([this] {
         const auto heard = listener_->capture_once(std::chrono::milliseconds{10000});
         const QString text = heard ? QString::fromStdString(*heard) : QString();
         QMetaObject::invokeMethod(this, [this, text] {
             mic_->setEnabled(true);
-            if (text.isEmpty()) return;
-            clearSuggestions();
-            chat_->append(Speaker::You, text);
-            respond(text);
+            if (!text.isEmpty()) ask(text);
         }, Qt::QueuedConnection);
     }).detach();
 }
 
-void MainWindow::onListenToggled(bool listening) {
-    if (!listener_) return;
-    if (listening) {
-        listener_->resume();
-    } else {
-        listener_->pause();
-        if (speaker_) speaker_->stop();
-    }
+void MainWindow::ask(const QString& utterance) {
+    if (!router_ || utterance.isEmpty()) return;
+
+    pending_ = utterance;
+    home_->setExchange(utterance, QString());
+    home_->setThinking();
+
+    const std::string text = utterance.toStdString();
+    std::thread([this, text] {
+        const auto reply = router_->route(text);
+        const QString replied = QString::fromStdString(reply.text);
+        const QString action = QString::fromStdString(reply.action);
+        const bool acted = reply.acted;
+        QMetaObject::invokeMethod(this, [this, replied, action, acted] {
+            deliver(replied, action, acted);
+        }, Qt::QueuedConnection);
+    }).detach();
+}
+
+void MainWindow::deliver(const QString& reply, const QString& action, bool acted) {
+    home_->setExchange(pending_, reply);
+    activity_->record(pending_, reply, action, acted);
+    say(reply);
+}
+
+void MainWindow::say(const QString& text) {
+    if (!speaker_ || !listener_) return;
+    listener_->set_speaking(true);
+    speaker_->speak(text.toStdString(), [this](bool) {
+        QMetaObject::invokeMethod(this, [this] {
+            if (listener_) listener_->set_speaking(false);
+        }, Qt::QueuedConnection);
+    });
 }
 
 void MainWindow::toggleWindow() {
@@ -426,39 +405,6 @@ void MainWindow::toggleWindow() {
     showNormal();
     raise();
     activateWindow();
-}
-
-// -------------------------------------------------------------------- replies
-
-void MainWindow::respond(const QString& prompt) {
-    if (!router_) return;
-
-    const std::string utterance = prompt.toStdString();
-    std::thread([this, utterance] {
-        const auto reply = router_->route(utterance);
-        const QString text = QString::fromStdString(reply.text);
-        const QString action = QString::fromStdString(reply.action);
-        const bool acted = reply.acted;
-        QMetaObject::invokeMethod(this, [this, text, action, acted] {
-            deliver(text, action, acted);
-        }, Qt::QueuedConnection);
-    }).detach();
-}
-
-void MainWindow::deliver(const QString& reply, const QString& action, bool acted) {
-    chat_->append(Speaker::Mimi, acted ? QStringLiteral("%1  ·  %2").arg(reply, action) : reply);
-    say(reply);
-}
-
-void MainWindow::say(const QString& text) {
-    if (!speaker_ || !listener_) return;
-    listener_->set_speaking(true);
-    speaker_->speak(text.toStdString(), [this](bool) {
-        // AVFoundation and afplay both call back off the GUI thread.
-        QMetaObject::invokeMethod(this, [this] {
-            if (listener_) listener_->set_speaking(false);
-        }, Qt::QueuedConnection);
-    });
 }
 
 void MainWindow::closeEvent(QCloseEvent* event) {
