@@ -56,6 +56,15 @@ public:
 
     // True when the server answers and `model` is actually pulled.
     bool reachable() const;
+
+    // Makes sure there is a server to talk to: returns straight away if one is
+    // already up, otherwise launches `ollama serve` and waits for it to answer.
+    // The app depends on Ollama but nothing on a stock machine starts it, so
+    // without this the brain is dead until the user runs it by hand.
+    bool ensure_running(std::chrono::seconds wait = std::chrono::seconds{20});
+
+    // False when the configured model is not among the pulled ones.
+    bool model_available() const;
     std::vector<std::string> models() const;
 
     ChatResult chat(const std::string& system, const std::string& user,

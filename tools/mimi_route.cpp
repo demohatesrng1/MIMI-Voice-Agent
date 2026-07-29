@@ -16,8 +16,9 @@ int main(int argc, char** argv) {
     mimi::log::configure_from_env();
 
     mimi::brain::Ollama ollama({});
-    if (!ollama.reachable()) {
-        std::fputs("Ollama is not running. Start it with: ollama serve\n", stderr);
+    if (!ollama.ensure_running()) {
+        std::fputs("Could not start Ollama. Is it installed? (brew install ollama)\n",
+                   stderr);
         return 1;
     }
     mimi::brain::Router router(ollama);

@@ -1,10 +1,13 @@
 #include "brain/ollama.hpp"
 
+#include "brain/shell.hpp"
 #include "core/log.hpp"
 
 #include <httplib.h>
 
+#include <algorithm>
 #include <cstdlib>
+#include <thread>
 #include <stdexcept>
 
 namespace mimi::brain {
@@ -68,6 +71,38 @@ bool Ollama::reachable() const {
     auto client = impl_->connect(std::chrono::seconds{5});
     auto response = client->Get("/api/version");
     return response && response->status == 200;
+}
+
+bool Ollama::model_available() const {
+    const auto pulled = models();
+    // Ollama reports "gemma3n:e4b"; a config may reasonably omit the tag.
+    return std::any_of(pulled.begin(), pulled.end(), [&](const std::string& name) {
+        return name == config_.model || name.rfind(config_.model + ":", 0) == 0 ||
+               config_.model.rfind(name, 0) == 0;
+    });
+}
+
+bool Ollama::ensure_running(std::chrono::seconds wait) {
+    if (reachable()) return true;
+
+    log::info(kTag, "no server on {}, starting one", config_.host);
+    if (!spawn_detached("ollama", {"serve"})) {
+        log::warn(kTag, "could not start ollama -- is it installed?");
+        return false;
+    }
+
+    // It needs a moment to bind the port. Poll rather than sleeping a fixed
+    // amount, so a fast machine is not made to wait.
+    const auto deadline = std::chrono::steady_clock::now() + wait;
+    while (std::chrono::steady_clock::now() < deadline) {
+        std::this_thread::sleep_for(std::chrono::milliseconds{400});
+        if (reachable()) {
+            log::info(kTag, "server is up");
+            return true;
+        }
+    }
+    log::warn(kTag, "ollama did not come up within {}s", wait.count());
+    return false;
 }
 
 std::vector<std::string> Ollama::models() const {

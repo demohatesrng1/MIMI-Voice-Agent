@@ -231,15 +231,26 @@ void MainWindow::startVoice() {
         // Warm up off the GUI thread so the window paints immediately instead
         // of appearing frozen for the second whisper takes to load.
         QTimer::singleShot(0, this, [this, loading] {
-            const bool brain_up = ollama_->reachable();
-            if (brain_up) ollama_->warmup();
+            // Start Ollama if it is not already up, rather than telling the
+            // user to do it. Nothing on a stock machine launches it.
+            const bool brain_up = ollama_->ensure_running();
+            const bool model_ok = brain_up && ollama_->model_available();
+            if (model_ok) ollama_->warmup();
+
             listener_->warmup();
             listener_->start();
             chat_->remove(loading);
+
             if (!brain_up) {
                 chat_->append(Speaker::System,
-                              QStringLiteral("Ollama が見つかりません。`ollama serve` を"
-                                             "起動してください。"));
+                              QStringLiteral("Ollama を起動できませんでした。"
+                                             "インストールされているか確認してください。"));
+            } else if (!model_ok) {
+                chat_->append(
+                    Speaker::System,
+                    QStringLiteral("モデル %1 がありません。`ollama pull %1` を実行して"
+                                   "ください。")
+                        .arg(QString::fromStdString(ollama_->config().model)));
             }
             status_->setText(QStringLiteral("listening"));
             chat_->append(Speaker::Mimi,

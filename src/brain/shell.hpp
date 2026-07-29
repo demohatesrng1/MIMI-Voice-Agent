@@ -28,6 +28,11 @@ inline ProcessResult run(const std::string& program,
     return run(program, std::vector<std::string>(args), timeout_seconds);
 }
 
+// Starts a long-running program and returns immediately, with its output
+// discarded. For daemons: run() waits for exit, which never comes.
+// Returns false if the program could not be launched at all.
+bool spawn_detached(const std::string& program, const std::vector<std::string>& args);
+
 // Escapes a string for embedding in an AppleScript literal.
 //
 // AppleScript is still a *language* being assembled from text, so the no-shell

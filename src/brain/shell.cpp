@@ -6,6 +6,7 @@
 #include <cerrno>
 #include <chrono>
 #include <csignal>
+#include <fcntl.h>
 #include <cstring>
 #include <poll.h>
 #include <spawn.h>
@@ -128,6 +129,38 @@ ProcessResult run(const std::string& program, const std::vector<std::string>& ar
 
     result.exit_code = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
     return result;
+}
+
+bool spawn_detached(const std::string& program, const std::vector<std::string>& args) {
+    posix_spawn_file_actions_t actions;
+    posix_spawn_file_actions_init(&actions);
+    // Detach from our stdio, or the child keeps our pipes open and inherits a
+    // terminal it will happily write to.
+    posix_spawn_file_actions_addopen(&actions, STDIN_FILENO, "/dev/null", O_RDONLY, 0);
+    posix_spawn_file_actions_addopen(&actions, STDOUT_FILENO, "/dev/null", O_WRONLY, 0);
+    posix_spawn_file_actions_addopen(&actions, STDERR_FILENO, "/dev/null", O_WRONLY, 0);
+
+    std::vector<char*> argv;
+    argv.reserve(args.size() + 2);
+    argv.push_back(const_cast<char*>(program.c_str()));
+    for (const auto& arg : args) argv.push_back(const_cast<char*>(arg.c_str()));
+    argv.push_back(nullptr);
+
+    pid_t pid = 0;
+    const int spawned =
+        ::posix_spawnp(&pid, program.c_str(), &actions, nullptr, argv.data(), environ);
+    posix_spawn_file_actions_destroy(&actions);
+
+    if (spawned != 0) {
+        log::debug(kTag, "could not launch {}: {}", program, std::strerror(spawned));
+        return false;
+    }
+    // Reap it if it dies immediately; otherwise leave it running. Without this
+    // a failed launch would sit as a zombie for the life of the app.
+    int status = 0;
+    ::waitpid(pid, &status, WNOHANG);
+    log::info(kTag, "started {} (pid {})", program, pid);
+    return true;
 }
 
 std::string applescript_quote(std::string_view text) {

@@ -31,7 +31,7 @@ int main(int argc, char** argv) {
     mimi::brain::Ollama ollama(config);
 
     if (check) {
-        std::printf("server    : %s\n", ollama.reachable() ? "up" : "DOWN");
+        std::printf("server    : %s\n", ollama.ensure_running() ? "up" : "DOWN");
         std::printf("model     : %s\n", config.model.c_str());
         std::puts("available :");
         for (const auto& m : ollama.models()) std::printf("  %s\n", m.c_str());
