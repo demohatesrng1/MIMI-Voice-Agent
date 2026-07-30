@@ -4,6 +4,8 @@
 #include "ui/theme.hpp"
 
 #include <QCloseEvent>
+#include <QFont>
+#include <QFontMetrics>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
@@ -261,6 +263,18 @@ void AccountView::buildSignUp() {
     column->addSpacing(14);
 
     question_ = heading(QString());
+    // The heading paints at 36px (its inline stylesheet) but the application
+    // stylesheet's `QWidget { font-size: 19px }` makes the label size itself
+    // from the 19px base font. So a question that wraps to two lines at 36px --
+    // "What should she call you?" -- is laid out only one line tall and paints
+    // straight over the step counter above it and the hint below, which is why
+    // the question was unreadable. Reserve two rendered lines up front. It also
+    // stops the column jumping as the steps change between one- and two-liners.
+    {
+        QFont rendered = question_->font();
+        rendered.setPixelSize(36);
+        question_->setMinimumHeight(QFontMetrics(rendered).lineSpacing() * 2 + 8);
+    }
     column->addWidget(question_);
     column->addSpacing(8);
 

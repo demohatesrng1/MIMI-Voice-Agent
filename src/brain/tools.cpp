@@ -982,6 +982,41 @@ std::optional<Reminder> parse_reminder(const std::string& text) {
     return std::nullopt;
 }
 
+std::optional<std::chrono::seconds> parse_duration(const std::string& text) {
+    // Japanese: a number and a unit, anywhere -- "10分", "1時間後", "30秒".
+    {
+        std::smatch match;
+        if (std::regex_search(text, match, std::regex(R"((\d+)\s*(秒|分|時間))"))) {
+            const int amount = std::stoi(match[1].str());
+            const std::string unit = match[2].str();
+            const int scale = unit == "秒" ? 1 : (unit == "分" ? 60 : 3600);
+            return std::chrono::seconds{amount * scale};
+        }
+    }
+
+    const std::string lower = lowercase(text);
+    // English: "5 minutes", "30 seconds", "2 hours".
+    {
+        std::smatch match;
+        if (std::regex_search(lower, match, std::regex(R"((\d+)\s*(second|minute|hour)s?)"))) {
+            const int amount = std::stoi(match[1].str());
+            const std::string unit = match[2].str();
+            const int scale = unit == "second" ? 1 : (unit == "minute" ? 60 : 3600);
+            return std::chrono::seconds{amount * scale};
+        }
+    }
+    // Bare "an hour" / "a minute" with no number is one of that unit.
+    {
+        std::smatch match;
+        if (std::regex_search(lower, match, std::regex(R"(\b(?:a|an|one)\s+(second|minute|hour))"))) {
+            const std::string unit = match[1].str();
+            const int scale = unit == "second" ? 1 : (unit == "minute" ? 60 : 3600);
+            return std::chrono::seconds{scale};
+        }
+    }
+    return std::nullopt;
+}
+
 namespace {
 
 // Pending reminders, as one JSON array on disk. Small and rewritten whole:
@@ -1007,6 +1042,15 @@ void write_reminders(const nlohmann::json& list) {
 
 std::int64_t epoch_now() {
     return static_cast<std::int64_t>(std::time(nullptr));
+}
+
+// "10秒後" / "5分後" / "2時間後" from a number of seconds still to go. Shared by
+// the pending list and by a reschedule reading its new time back.
+std::string relative_when(std::int64_t seconds_left) {
+    if (seconds_left <= 0) return "まもなく";
+    if (seconds_left < 60) return std::to_string(seconds_left) + "秒後";
+    if (seconds_left < 3600) return std::to_string(seconds_left / 60) + "分後";
+    return std::to_string(seconds_left / 3600) + "時間後";
 }
 
 // Drops a reminder once it has fired, matched on when and what.
@@ -1069,16 +1113,7 @@ std::vector<Pending> pending_reminders() {
         pending.what = item.value("text", std::string{});
         if (pending.due == 0 || pending.what.empty()) continue;
 
-        const std::int64_t left = pending.due - now;
-        if (left <= 0) {
-            pending.when = "まもなく";
-        } else if (left < 60) {
-            pending.when = std::to_string(left) + "秒後";
-        } else if (left < 3600) {
-            pending.when = std::to_string(left / 60) + "分後";
-        } else {
-            pending.when = std::to_string(left / 3600) + "時間後";
-        }
+        pending.when = relative_when(pending.due - now);
         out.push_back(std::move(pending));
     }
     std::sort(out.begin(), out.end(),
@@ -1119,6 +1154,48 @@ std::string cancel_reminder(const std::string& what) {
     }
     if (!cancelled.empty()) write_reminders(kept);
     return cancelled;
+}
+
+Reschedule reschedule_reminder(const std::string& what, std::chrono::seconds new_delay,
+                               std::function<void(const std::string&)> on_fire) {
+    Reschedule result;
+    if (g_rehearsing) return result;  // a dry run must not move a real timer
+    auto list = read_reminders();
+    if (list.empty()) return result;
+
+    // Same targeting as cancel: soonest first, best text match, or the next one
+    // due when no subject was named ("push it back ten minutes").
+    const std::string wanted = lowercase(trim(what));
+    std::int64_t target_due = 0;
+    std::string target_text;
+    for (const auto& item : pending_reminders()) {
+        if (wanted.empty() || lowercase(item.what).find(wanted) != std::string::npos) {
+            target_due = item.due;
+            target_text = item.what;
+            break;
+        }
+    }
+    if (target_text.empty()) return result;
+
+    // Rewrite the matched entry's due in place. Changing the due is also what
+    // calls off the old timer: when it wakes, still_wanted() no longer finds
+    // this (due, text) pair, so it stays quiet and only the new timer fires.
+    const std::int64_t new_due = epoch_now() + new_delay.count();
+    bool moved = false;
+    for (auto& item : list) {
+        if (!moved && item.value("due", std::int64_t{0}) == target_due &&
+            item.value("text", "") == target_text) {
+            item["due"] = new_due;
+            moved = true;
+        }
+    }
+    write_reminders(list);
+
+    arm(new_delay, new_due, target_text, std::move(on_fire));
+
+    result.what = target_text;
+    result.when = relative_when(new_delay.count());
+    return result;
 }
 
 int restore_reminders(std::function<void(const std::string&)> on_fire) {

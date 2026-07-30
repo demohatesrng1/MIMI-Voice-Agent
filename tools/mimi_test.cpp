@@ -209,6 +209,29 @@ void test_reminders() {
     equal(tools::cancel_reminder("テスト"), "テスト予定", "cancels by partial match");
     check(tools::pending_reminders().empty(), "cancelling removes it");
     check(tools::cancel_reminder("anything").empty(), "cancelling nothing is safe");
+
+    // Moving an existing reminder to a new time, rather than stacking a second.
+    check(tools::parse_duration("10分後にして").value_or(std::chrono::seconds{0}) ==
+              std::chrono::seconds{600}, "reads a bare duration from Japanese");
+    check(tools::parse_duration("snooze 5 minutes").value_or(std::chrono::seconds{0}) ==
+              std::chrono::seconds{300}, "reads a bare duration from English");
+    check(!tools::parse_duration("cancel it").has_value(), "no number, no duration");
+
+    tools::schedule(std::chrono::seconds{600}, "会議", {});
+    const auto moved = tools::reschedule_reminder("会議", std::chrono::seconds{1800}, {});
+    equal(moved.what, "会議", "reschedule finds it by name");
+    check(!moved.when.empty(), "reschedule reports the new time");
+    {
+        const auto still = tools::pending_reminders();
+        check(still.size() == 1, "reschedule moves, it does not duplicate");
+        if (!still.empty()) check(still.front().due > time(nullptr) + 60,
+                                  "the reminder now sits at the later time");
+    }
+    check(tools::reschedule_reminder("会議", std::chrono::seconds{60}, {}).what == "会議",
+          "reschedule again is fine");
+    check(tools::reschedule_reminder("nothing here", std::chrono::seconds{60}, {}).what.empty(),
+          "rescheduling a miss is safe");
+    while (!tools::cancel_reminder().empty()) {}  // leave the file clean
     tools::set_rehearsing(true);
 }
 

@@ -41,13 +41,26 @@ struct Speaker::Impl {
     // afplay pid for the VOICEVOX path; the system synthesiser has its own stop.
     std::atomic<pid_t> player{0};
 
+    // Each speak() claims the next generation. A completion only counts if it is
+    // still the current one, so a clip that was replaced (or killed) by a newer
+    // utterance can never fire the newer utterance's callback. Without this,
+    // overlapping replies -- a reminder firing mid-answer, a typed question over
+    // her voice -- crossed their callbacks and cut each other to silence.
+    std::atomic<std::uint64_t> generation{0};
+    // The generation and utterance currently owning the system synthesiser, so
+    // its delegate can tell a live completion from a stale one.
+    std::atomic<std::uint64_t> av_generation{0};
+    AVSpeechUtterance* av_current = nil;
+
     std::mutex mutex;
+    std::uint64_t cb_generation = 0;
     std::function<void(bool)> on_finished;
 
-    void finish(bool completed) {
+    void finish(bool completed, std::uint64_t gen) {
         std::function<void(bool)> callback;
         {
             std::lock_guard lock(mutex);
+            if (gen != cb_generation) return;  // a newer utterance has taken over
             callback.swap(on_finished);
         }
         if (callback) callback(completed);
@@ -61,13 +74,14 @@ struct Speaker::Impl {
 - (void)speechSynthesizer:(AVSpeechSynthesizer*)synthesizer
     didFinishSpeechUtterance:(AVSpeechUtterance*)utterance {
     auto* impl = static_cast<mimi::voice::Speaker::Impl*>(self.owner);
-    if (impl) impl->finish(true);
+    // Ignore the tail of an utterance a newer speak() has already replaced.
+    if (impl && utterance == impl->av_current) impl->finish(true, impl->av_generation.load());
 }
 
 - (void)speechSynthesizer:(AVSpeechSynthesizer*)synthesizer
     didCancelSpeechUtterance:(AVSpeechUtterance*)utterance {
     auto* impl = static_cast<mimi::voice::Speaker::Impl*>(self.owner);
-    if (impl) impl->finish(false);
+    if (impl && utterance == impl->av_current) impl->finish(false, impl->av_generation.load());
 }
 
 @end
@@ -155,15 +169,18 @@ bool Speaker::start_voicevox() {
 // Renders through VOICEVOX and plays the result. Returns false if anything
 // fails, so speak() can fall through to the system synthesiser rather than
 // going silent.
-bool Speaker::speak_voicevox(const std::string& text) {
+bool Speaker::speak_voicevox(const std::string& text, std::uint64_t generation) {
     if (!impl_->voicevox_ready || !impl_->voicevox) return false;
 
     auto wav = impl_->voicevox->synthesize(text);
     if (wav.empty()) return false;
 
     // afplay wants a file. Writing one costs a few ms against speech that takes
-    // seconds, and it keeps playback in a process we can kill for barge-in.
-    const auto path = paths::data_subdir("cache") / "say.wav";
+    // seconds, and it keeps playback in a process we can kill for barge-in. One
+    // file per utterance: a player that has not yet been reaped can never read a
+    // clip the next utterance is busy overwriting.
+    const auto path =
+        paths::data_subdir("cache") / ("say-" + std::to_string(generation) + ".wav");
     {
         std::ofstream file(path, std::ios::binary);
         if (!file) return false;
@@ -175,14 +192,24 @@ bool Speaker::speak_voicevox(const std::string& text) {
     char* argv[] = {const_cast<char*>("afplay"), const_cast<char*>(file_path.c_str()),
                     nullptr};
     pid_t pid = 0;
-    if (::posix_spawnp(&pid, "afplay", nullptr, nullptr, argv, environ) != 0) return false;
+    if (::posix_spawnp(&pid, "afplay", nullptr, nullptr, argv, environ) != 0) {
+        std::remove(file_path.c_str());
+        return false;
+    }
     impl_->player.store(pid);
 
-    std::thread([this, pid] {
+    std::thread([this, pid, generation, file_path] {
         int status = 0;
         ::waitpid(pid, &status, 0);
-        impl_->player.store(0);
-        impl_->finish(true);
+        // Only clear the slot if it still holds this player; a newer utterance
+        // may already own it.
+        pid_t expected = pid;
+        impl_->player.compare_exchange_strong(expected, 0);
+        std::remove(file_path.c_str());
+        // Killed by stop()/barge-in reads as "not completed", so the reply is
+        // not filed away as if she had finished saying it.
+        const bool completed = WIFEXITED(status) && WEXITSTATUS(status) == 0;
+        impl_->finish(completed, generation);
     }).detach();
     return true;
 }
@@ -192,12 +219,21 @@ void Speaker::speak(const std::string& text, std::function<void(bool)> on_finish
         if (on_finished) on_finished(true);
         return;
     }
+    const std::uint64_t generation =
+        impl_->generation.fetch_add(1, std::memory_order_relaxed) + 1;
     {
         std::lock_guard lock(impl_->mutex);
+        impl_->cb_generation = generation;
         impl_->on_finished = std::move(on_finished);
     }
 
-    if (speak_voicevox(text)) return;
+    // Replace whatever is playing. Claiming the generation first makes the old
+    // clip's completion stale, so stopping it cannot fire this utterance's
+    // callback; killing it before writing the new clip means two players never
+    // overlap or read a half-written file.
+    stop();
+
+    if (speak_voicevox(text, generation)) return;
 
     @autoreleasepool {
         AVSpeechUtterance* utterance = [AVSpeechUtterance
@@ -206,6 +242,8 @@ void Speaker::speak(const std::string& text, std::function<void(bool)> on_finish
         utterance.rate = config_.rate;
         utterance.pitchMultiplier = config_.pitch;
         utterance.volume = config_.volume;
+        impl_->av_generation.store(generation, std::memory_order_relaxed);
+        impl_->av_current = utterance;
         [impl_->synth speakUtterance:utterance];
     }
 }

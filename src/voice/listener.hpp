@@ -111,11 +111,14 @@ public:
         // voice back to her. So it watches level instead: speech this much
         // louder than her playback, held this long, is a person leaning in
         // rather than the speaker bleeding into the microphone. Without echo
-        // cancellation the threshold has to sit well above room bleed, which is
-        // why it is deliberately high -- a false trigger cuts her off mid-answer.
+        // cancellation the threshold has to sit above room bleed, but it was
+        // tuned so conservatively that talking over her rarely landed. These are
+        // loosened for a snappier cut-in -- a lower level, held briefly -- at the
+        // cost of the odd self-trigger when her own playback is loud. Raise
+        // barge_in_rms back toward 0.055 if she starts cutting herself off.
         bool barge_in_on_speech = true;
-        float barge_in_rms = 0.055f;
-        std::chrono::milliseconds barge_in_hold{280};
+        float barge_in_rms = 0.045f;
+        std::chrono::milliseconds barge_in_hold{160};
 
         int whisper_threads = 4;
     };

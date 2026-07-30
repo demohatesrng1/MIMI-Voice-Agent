@@ -25,11 +25,6 @@ ContextRibbon::ContextRibbon(QWidget* parent) : QWidget(parent) {
 
 QSize ContextRibbon::sizeHint() const { return {600, kHeight}; }
 
-void ContextRibbon::setTask(const QString& task) {
-    task_ = task;
-    update();
-}
-
 void ContextRibbon::setCompact(bool compact) {
     if (compact == compact_) return;
     compact_ = compact;
@@ -65,22 +60,9 @@ void ContextRibbon::paintEvent(QPaintEvent*) {
     value.setPixelSize(16);
     value.setWeight(QFont::DemiBold);
 
-    // Left: what she is looking at. Blank until something real is set, rather
-    // than a placeholder that reads as fact.
-    if (!task_.isEmpty()) {
-        painter.setFont(caps);
-        painter.setPen(theme::kFaint);
-        const int tagW =
-            QFontMetrics(caps).horizontalAdvance(QStringLiteral("IN FRONT")) + 10;
-        painter.drawText(QRect(kPadX, 0, tagW, height()), Qt::AlignVCenter | Qt::AlignLeft,
-                         QStringLiteral("IN FRONT"));
-        painter.setFont(value);
-        painter.setPen(theme::kInk);
-        painter.drawText(QRect(kPadX + tagW, 0, width() / 2, height()),
-                         Qt::AlignVCenter | Qt::AlignLeft, task_);
-    }
-
-    // Simple mode stops here -- just the task, nothing to read on the right.
+    // Nothing on the left any more: the "IN FRONT <app>" readout that used to
+    // sit here was passive chrome -- it named the frontmost app but did nothing
+    // and answered no question -- so it was removed.
     if (compact_) return;
 
     // Right: the connected-context metrics, laid out from the right edge in.

@@ -2,6 +2,7 @@
 
 #include "voice/voicevox.hpp"
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
@@ -79,7 +80,7 @@ public:
     static std::vector<VoiceInfo> voices_for(const std::string& language_prefix);
 
 private:
-    bool speak_voicevox(const std::string& text);
+    bool speak_voicevox(const std::string& text, std::uint64_t generation);
 
     Config config_;
     std::unique_ptr<Impl> impl_;

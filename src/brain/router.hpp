@@ -63,6 +63,10 @@ private:
     // Reads notes back aloud; `when_empty` is spoken when there are none.
     // Reads back the reminders still waiting.
     Reply speak_reminders();
+    // What happens when a reminder this Router set comes due: the banner, the
+    // spoken cue, the journal entry, and the hand-off to the UI. Handed to both
+    // schedule() and reschedule so a moved reminder fires exactly like a new one.
+    std::function<void(const std::string&)> reminder_sink();
     Reply speak_notes(const std::vector<Note>& notes, const std::string& when_empty);
     // Answers a question about what is in the notes, by giving the model the
     // notes themselves. `question` empty means "summarise them".

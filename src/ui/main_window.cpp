@@ -276,9 +276,6 @@ void MainWindow::resizeEvent(QResizeEvent* event) {
 // layout, so they are placed by hand whenever the window changes size.
 void MainWindow::refreshContext() {
     if (ribbon_ == nullptr) return;
-    const QString front = QString::fromStdString(brain::ax::frontmost_app());
-    ribbon_->setTask(front);
-
     const int notes = static_cast<int>(brain::Notes().all().size());
     ribbon_->setMetric(QStringLiteral("NOTES"), QString::number(notes));
     ribbon_->setMetric(QStringLiteral("CONTROL"),
@@ -619,10 +616,12 @@ void MainWindow::say(const QString& text) {
     if (!speakReplies_) return;
     if (!speaker_ || !listener_) return;
     listener_->set_speaking(true);
-    speaker_->speak(text.toStdString(), [this](bool) {
-        QMetaObject::invokeMethod(this, [this] {
+    speaker_->speak(text.toStdString(), [this](bool completed) {
+        QMetaObject::invokeMethod(this, [this, completed] {
             if (listener_) listener_->set_speaking(false);
-            flashRemembering();  // she files it away as the answer finishes
+            // Only file it away as a finished answer -- not when she was cut off
+            // mid-sentence by a barge-in or Stop.
+            if (completed) flashRemembering();
         }, Qt::QueuedConnection);
     });
 }

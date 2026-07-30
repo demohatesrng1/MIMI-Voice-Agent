@@ -379,28 +379,55 @@ Reply Router::rules(const std::string& utterance, const std::string& lower) {
         return speak_reminders();
     }
 
+    // --- move a reminder you already set ------------------------------------
+    // Ahead of the parser below, which would otherwise read "10分後にして" as a
+    // brand-new reminder. Needs both a reminder word and a moving verb, so a
+    // plain new reminder ("10分後に休憩") still falls through to the parser.
+    if ((has(utterance, "リマインダー") || has(utterance, "アラーム") ||
+         has(lower, "reminder")) &&
+        (has(utterance, "ずらして") || has(utterance, "変更") || has(utterance, "延ばして") ||
+         has(utterance, "延長") || has(utterance, "遅らせて") || has(utterance, "後ろ倒し") ||
+         has(utterance, "スヌーズ") || has(utterance, "リセット") ||
+         has(lower, "reschedule") || has(lower, "snooze") || has(lower, "push") ||
+         has(lower, "move") || has(lower, "delay") || has(lower, "reset") ||
+         has(lower, "change"))) {
+        const auto when = tools::parse_duration(utterance);
+        if (!when) {
+            reply = {"何分後に変更しますか？", "reschedule_reminder", "", false};
+            return reply;
+        }
+        // The subject, if one was named, is whatever survives stripping the move
+        // words and the reminder word. Empty means "the next one".
+        std::string which = strip_words(
+            utterance, {"のリマインダーを", "リマインダーを", "リマインダー", "アラーム",
+                        "ずらして", "変更して", "変更", "延ばして", "延長して", "延長",
+                        "遅らせて", "後ろ倒しして", "後ろ倒し", "スヌーズして", "スヌーズ",
+                        "リセットして", "リセット", "にして", "して", "please",
+                        "reschedule the reminder", "reschedule", "snooze", "reset the reminder",
+                        "reset", "push back", "push", "move the reminder", "move", "delay",
+                        "change the reminder", "change", "the reminder", "reminder", "to", "by"});
+        // Whatever is left is only time words, not a subject.
+        if (tools::parse_duration(which)) which.clear();
+        which = strip_trailing_particle(which);
+
+        auto moved = tools::reschedule_reminder(which, *when, reminder_sink());
+        // A named subject that matched nothing falls back to the soonest, so a
+        // rough transcript of the subject does not strand the request.
+        if (moved.what.empty() && !which.empty()) {
+            moved = tools::reschedule_reminder("", *when, reminder_sink());
+        }
+        reply = {moved.what.empty()
+                     ? "変更できるリマインダーがありませんでした。"
+                     : "「" + moved.what + "」のリマインダーを" + moved.when + "に変更しました。",
+                 "reschedule_reminder", moved.what, !moved.what.empty()};
+        return reply;
+    }
+
     // --- reminders, first: they contain other keywords ("5分後に音楽") -------
     if (auto reminder = tools::parse_reminder(utterance)) {
         const auto seconds = reminder->delay.count();
         std::string what = reminder->what.empty() ? "お知らせ" : reminder->what;
-        tools::schedule(reminder->delay, what, [this](const std::string& text) {
-            // Banner, then the spoken cue, then the reminder itself. The cue is
-            // what makes a reminder land when the window is behind something --
-            // a silent banner in the corner is missed, which for a reminder is
-            // the same as never having set it.
-            //
-            // The banner names what it is about in its subtitle, and what she
-            // says is a sentence rather than the bare fragment that was stored:
-            // hearing just 「休憩」 does not tell you a reminder went off.
-            const std::string spoken = tools::reminder_announcement(text);
-            tools::notify("ミミ", "リマインダー", spoken);
-            tools::play_notification_cue();
-            // A reminder that fired is something that happened, so it belongs
-            // in the journal with everything else she remembers.
-            journal_.log("reminder_fired",
-                         {{"said", "リマインダー"}, {"replied", spoken}, {"acted", true}});
-            if (on_reminder_) on_reminder_(spoken);
-        });
+        tools::schedule(reminder->delay, what, reminder_sink());
         const auto minutes = seconds / 60;
         reply.text = minutes > 0 ? "はい、" + std::to_string(minutes) + "分後に「" + what +
                                        "」とお知らせします。"
@@ -1276,6 +1303,27 @@ Reply Router::speak_reminders() {
     }
     reply.detail = std::to_string(pending.size());
     return reply;
+}
+
+std::function<void(const std::string&)> Router::reminder_sink() {
+    return [this](const std::string& text) {
+        // Banner, then the spoken cue, then the reminder itself. The cue is what
+        // makes a reminder land when the window is behind something -- a silent
+        // banner in the corner is missed, which for a reminder is the same as
+        // never having set it.
+        //
+        // The banner names what it is about in its subtitle, and what she says
+        // is a sentence rather than the bare fragment that was stored: hearing
+        // just 「休憩」 does not tell you a reminder went off.
+        const std::string spoken = tools::reminder_announcement(text);
+        tools::notify("ミミ", "リマインダー", spoken);
+        tools::play_notification_cue();
+        // A reminder that fired is something that happened, so it belongs in the
+        // journal with everything else she remembers.
+        journal_.log("reminder_fired",
+                     {{"said", "リマインダー"}, {"replied", spoken}, {"acted", true}});
+        if (on_reminder_) on_reminder_(spoken);
+    };
 }
 
 Reply Router::converse(const std::string& utterance) {

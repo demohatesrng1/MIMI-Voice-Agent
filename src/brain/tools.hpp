@@ -170,6 +170,12 @@ struct Reminder {
 };
 std::optional<Reminder> parse_reminder(const std::string& text);
 
+// Pulls just a length of time out of free text: "10分", "1時間後", "5 minutes",
+// "an hour". Unlike parse_reminder it needs no "remind"/"後" framing, so it can
+// read the new time out of "そのリマインダーを10分後にして" / "snooze 5
+// minutes" where the reminder is being moved rather than created.
+std::optional<std::chrono::seconds> parse_duration(const std::string& text);
+
 // Fires `on_fire` after the delay, and writes the reminder to disk first.
 //
 // A detached thread alone loses everything the moment the process ends: someone
@@ -196,6 +202,21 @@ std::vector<Pending> pending_reminders();
 // Cancels the reminder whose text best matches, or the soonest one when `what`
 // is empty. Returns what was cancelled, or empty if nothing matched.
 std::string cancel_reminder(const std::string& what = {});
+
+// The outcome of moving a reminder to a new time.
+struct Reschedule {
+    std::string what;  // the reminder that moved; empty when nothing matched
+    std::string when;  // "10分後", for reading the new time back
+};
+
+// Moves an existing reminder to fire `new_delay` from now. Targets the reminder
+// the same way cancel_reminder does -- the best text match, or the soonest when
+// `what` is empty -- and re-arms its timer with `on_fire`, exactly as a fresh
+// one. The old timer still sleeps, but wakes to find its due time changed and
+// says nothing, so a moved reminder never double-fires. Returns an empty `what`
+// if nothing matched.
+Reschedule reschedule_reminder(const std::string& what, std::chrono::seconds new_delay,
+                               std::function<void(const std::string&)> on_fire);
 
 // Re-arms every reminder saved by schedule() that has not fired yet.
 //
