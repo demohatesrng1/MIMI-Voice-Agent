@@ -105,7 +105,7 @@ void GlassCard::paintEvent(QPaintEvent*) {
     painter.drawEllipse(QPointF(body.left() + 20, body.top() + 24), 3.0, 3.0);
 
     QFont caps = font();
-    caps.setPixelSize(9);
+    caps.setPixelSize(12);
     caps.setWeight(QFont::DemiBold);
     caps.setLetterSpacing(QFont::AbsoluteSpacing, 2.0);
     painter.setFont(caps);
@@ -115,7 +115,7 @@ void GlassCard::paintEvent(QPaintEvent*) {
                      Qt::AlignVCenter | Qt::AlignLeft, tag_);
 
     QFont titleFont = font();
-    titleFont.setPixelSize(15);
+    titleFont.setPixelSize(18);
     titleFont.setWeight(QFont::DemiBold);
     painter.setFont(titleFont);
     painter.setPen(theme::kInk);
@@ -123,7 +123,7 @@ void GlassCard::paintEvent(QPaintEvent*) {
                      Qt::AlignVCenter | Qt::AlignLeft, title_);
 
     QFont bodyFont = font();
-    bodyFont.setPixelSize(12);
+    bodyFont.setPixelSize(15);
     painter.setFont(bodyFont);
     painter.setPen(theme::kDim);
     painter.drawText(QRectF(body.left() + 20, body.top() + 58, body.width() - 40,

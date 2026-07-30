@@ -1,9 +1,14 @@
 #pragma once
 
+#include "brain/journal.hpp"
+
+#include <QDate>
 #include <QScrollArea>
 #include <QString>
 #include <QVector>
 #include <QWidget>
+
+class QLabel;
 
 namespace mimi::ui {
 
@@ -56,6 +61,18 @@ public:
 
     // Record an exchange as it happens. Lands at the top of Today.
     void remember(const QString& said, const QString& replied);
+    // Re-reads the journal from disk. Called when the page is shown.
+    void reload();
+
+protected:
+    void showEvent(QShowEvent* event) override;
+
+private:
+    QString dayLabel(const QString& day) const;
+    static Memory::Kind kindFor(const QString& action);
+
+    brain::Journal journal_;
+    QLabel* empty_ = nullptr;
 
 private:
     TimelineStrip* strip_ = nullptr;

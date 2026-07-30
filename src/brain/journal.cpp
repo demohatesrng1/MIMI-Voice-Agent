@@ -29,6 +29,23 @@ std::string now_iso() {
 
 Journal::Journal() { paths::data_subdir("journal"); }
 
+int Journal::prune(int keep_days) {
+    if (keep_days <= 0) return 0;
+
+    // days() is ascending and every name is an ISO date, so the cutoff is a
+    // plain string comparison -- no date parsing needed to order them.
+    const auto all = days();
+    if (static_cast<int>(all.size()) <= keep_days) return 0;
+
+    int removed = 0;
+    for (std::size_t i = 0; i + static_cast<std::size_t>(keep_days) < all.size(); ++i) {
+        std::error_code ec;
+        if (std::filesystem::remove(day_file(all[i]), ec)) ++removed;
+    }
+    if (removed > 0) log::info(kTag, "pruned {} old journal day(s)", removed);
+    return removed;
+}
+
 std::string Journal::today() {
     const auto now = std::time(nullptr);
     std::tm local{};

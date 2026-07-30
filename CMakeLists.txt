@@ -140,7 +140,11 @@ set_source_files_properties(src/voice/tts.mm PROPERTIES
 # executable that links mimi_voice (the app and the CLI harnesses). The library
 # dlopens its ONNX Runtime by path at runtime, so only the core dylib is linked.
 if(MIMI_HAS_VOICEVOX)
-  target_compile_definitions(mimi_voice PRIVATE MIMI_HAS_VOICEVOX VOICEVOX_LOAD_ONNXRUNTIME)
+  target_compile_definitions(mimi_voice PRIVATE VOICEVOX_LOAD_ONNXRUNTIME)
+  # PUBLIC, not PRIVATE: the settings page reports which voice she actually
+  # speaks in, and a definition scoped to this library made it report the
+  # fallback on a build that had VOICEVOX all along.
+  target_compile_definitions(mimi_voice PUBLIC MIMI_HAS_VOICEVOX)
   target_include_directories(mimi_voice SYSTEM PRIVATE "${MIMI_VOICEVOX_DIR}/c_api/include")
   # Full-path link: CMake propagates it to every executable that links
   # mimi_voice and auto-adds an rpath to the dylib's directory for the build tree.
@@ -156,9 +160,20 @@ add_library(mimi_brain STATIC
   src/brain/router.cpp
   src/brain/journal.cpp
   src/brain/reflect.cpp
+  src/brain/notes.cpp
+  src/brain/account.cpp
+  src/brain/accessibility.mm
 )
 target_include_directories(mimi_brain PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_link_libraries(mimi_brain PUBLIC mimi_core PRIVATE mimi_httplib)
+
+# The Accessibility API lives in ApplicationServices; AppKit is what identifies
+# the frontmost application to drive.
+set_source_files_properties(src/brain/accessibility.mm PROPERTIES
+  COMPILE_FLAGS "-fobjc-arc")
+target_link_libraries(mimi_brain PRIVATE
+  "-framework ApplicationServices" "-framework AppKit" "-framework CoreGraphics"
+  "-framework AVFoundation" "-framework Contacts" "-framework Security")
 
 # ----------------------------------------------------------------------- tools
 
@@ -187,6 +202,12 @@ if(MIMI_BUILD_TOOLS)
   add_executable(mimi_tools tools/mimi_tools.cpp)
   target_link_libraries(mimi_tools PRIVATE mimi_brain)
 
+  add_executable(mimi_ax tools/mimi_ax.cpp)
+  target_link_libraries(mimi_ax PRIVATE mimi_brain)
+
+  add_executable(mimi_test tools/mimi_test.cpp)
+  target_link_libraries(mimi_test PRIVATE mimi_brain)
+
   add_executable(mimi_route tools/mimi_route.cpp)
   target_link_libraries(mimi_route PRIVATE mimi_brain)
 endif()
@@ -207,20 +228,16 @@ if(MIMI_BUILD_GUI)
     src/ui/controls.cpp
     src/ui/command_bar.cpp
     src/ui/workspace_dock.cpp
-    src/ui/canvas_view.cpp
     src/ui/timeline_view.cpp
     src/ui/live_thinking.cpp
     src/ui/context_ribbon.cpp
-    src/ui/predictive.cpp
-    src/ui/ai_dock.cpp
     src/ui/command_palette.cpp
     src/ui/glass_card.cpp
-    src/ui/mission_control.cpp
     src/ui/neural_search.cpp
     src/ui/ambient_notice.cpp
-    src/ui/digital_twin.cpp
-    src/ui/relationship_graph.cpp
-    src/ui/smart_voice.cpp
+    src/ui/notes_view.cpp
+    src/ui/account_view.cpp
+    src/ui/settings_view.cpp
     src/ui/ambient_audio.mm
     src/ui/icons.cpp
     src/ui/mac_window.mm
@@ -234,20 +251,13 @@ if(MIMI_BUILD_GUI)
     src/ui/controls.hpp
     src/ui/command_bar.hpp
     src/ui/workspace_dock.hpp
-    src/ui/canvas_view.hpp
     src/ui/timeline_view.hpp
     src/ui/live_thinking.hpp
     src/ui/context_ribbon.hpp
-    src/ui/predictive.hpp
-    src/ui/ai_dock.hpp
     src/ui/command_palette.hpp
     src/ui/glass_card.hpp
-    src/ui/mission_control.hpp
     src/ui/neural_search.hpp
     src/ui/ambient_notice.hpp
-    src/ui/digital_twin.hpp
-    src/ui/relationship_graph.hpp
-    src/ui/smart_voice.hpp
     src/ui/ambient_audio.hpp
     src/ui/presence.hpp
     src/ui/icons.hpp
@@ -292,41 +302,49 @@ if(MIMI_BUILD_GUI)
   if(MIMI_BUILD_TOOLS)
     qt_add_executable(mimi_gallery
       tools/mimi_gallery.cpp
-      src/ui/ambient.cpp
-      src/ui/voice_orb.cpp
-      src/ui/canvas_view.cpp
+      # The app's own widgets, so the gallery renders exactly what ships --
+      # including the whole window, chrome and all.
+      src/ui/main_window.cpp
+      src/ui/home_view.cpp
+      src/ui/notes_view.cpp
+      src/ui/account_view.cpp
+    src/ui/account_view.cpp
+      src/ui/settings_view.cpp
       src/ui/timeline_view.cpp
+      src/ui/command_bar.cpp
+      src/ui/command_palette.cpp
+      src/ui/neural_search.cpp
+      src/ui/context_ribbon.cpp
       src/ui/workspace_dock.cpp
       src/ui/live_thinking.cpp
-      src/ui/context_ribbon.cpp
-      src/ui/predictive.cpp
-      src/ui/ai_dock.cpp
-      src/ui/command_palette.cpp
+      src/ui/floating_orb.cpp
+      src/ui/voice_orb.cpp
       src/ui/glass_card.cpp
-      src/ui/mission_control.cpp
-      src/ui/neural_search.cpp
-      src/ui/digital_twin.cpp
-      src/ui/smart_voice.cpp
+      src/ui/ambient.cpp
       src/ui/controls.cpp
       src/ui/icons.cpp
-      src/ui/home_view.cpp
-      src/ui/ambient.hpp
-      src/ui/voice_orb.hpp
-      src/ui/canvas_view.hpp
+      src/ui/mac_window.mm
+      src/ui/ambient_audio.mm
+      # Headers carrying Q_OBJECT, for AUTOMOC.
+      src/ui/main_window.hpp
+      src/ui/home_view.hpp
+      src/ui/notes_view.hpp
+      src/ui/account_view.hpp
+    src/ui/account_view.hpp
+      src/ui/settings_view.hpp
       src/ui/timeline_view.hpp
+      src/ui/command_bar.hpp
+      src/ui/command_palette.hpp
+      src/ui/neural_search.hpp
+      src/ui/context_ribbon.hpp
       src/ui/workspace_dock.hpp
       src/ui/live_thinking.hpp
-      src/ui/context_ribbon.hpp
-      src/ui/predictive.hpp
-      src/ui/ai_dock.hpp
-      src/ui/command_palette.hpp
+      src/ui/floating_orb.hpp
+      src/ui/voice_orb.hpp
       src/ui/glass_card.hpp
-      src/ui/mission_control.hpp
-      src/ui/neural_search.hpp
-      src/ui/digital_twin.hpp
-      src/ui/smart_voice.hpp
+      src/ui/ambient.hpp
       src/ui/controls.hpp
-      src/ui/home_view.hpp
+      src/ui/voice_bridge.hpp
     )
     qt_add_resources(mimi_gallery "galleryicon"
       PREFIX "/" BASE "assets" FILES assets/mimi_face.png)

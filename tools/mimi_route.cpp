@@ -6,6 +6,7 @@
 
 #include "brain/ollama.hpp"
 #include "brain/router.hpp"
+#include "brain/tools.hpp"
 #include "core/log.hpp"
 
 #include <cstdio>
@@ -33,7 +34,11 @@ int main(int argc, char** argv) {
     };
 
     if (argc > 1 && std::string(argv[1]) == "--dry") {
-        std::puts("\nread-only commands (* = touched the machine)\n");
+        // "--dry" meant read-only by convention and not in fact: the reminder
+        // case armed a real timer that went off minutes later, on whatever
+        // machine happened to run the suite.
+        mimi::brain::tools::set_rehearsing(true);
+        std::puts("\nread-only commands (nothing is actually done)\n");
         for (const char* q : {"今何時ですか", "バッテリーはどのくらい",
                               "システムの空き容量を教えて", "音量はいくつ",
                               "5分後に休憩と教えて", "日本の首都はどこ"}) {

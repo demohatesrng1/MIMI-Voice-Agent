@@ -2,10 +2,13 @@
 
 #include "core/log.hpp"
 #include "core/paths.hpp"
+#include "brain/account.hpp"
+#include "ui/account_view.hpp"
 #include "ui/main_window.hpp"
 
 #include <QApplication>
 #include <QFile>
+#include <QEventLoop>
 #include <QIcon>
 #include <QFontDatabase>
 
@@ -33,6 +36,34 @@ int main(int argc, char** argv) {
 
     mimi::log::info("app", "data {}", mimi::paths::data_dir().string());
     mimi::log::info("app", "models {}", mimi::paths::models_dir().string());
+
+    // The account gate comes first. MainWindow is not constructed until someone
+    // is in -- building it early would start the microphone and the wake word
+    // behind a login screen, which is the one place she should not be
+    // listening.
+    {
+        mimi::ui::AccountView gate;
+        gate.setWindowTitle(QStringLiteral("Mimi"));
+        gate.resize(880, 620);
+
+        bool entered = false;
+        QObject::connect(&gate, &mimi::ui::AccountView::authenticated,
+                         [&entered, &gate](const QString&) {
+                             entered = true;
+                             gate.close();
+                         });
+        gate.show();
+        // A nested run of the same event loop, not a second application: the
+        // gate owns the screen until it is satisfied, and quitting it here
+        // leaves the QApplication intact for the window that follows.
+        QEventLoop loop;
+        QObject::connect(&gate, &mimi::ui::AccountView::authenticated, &loop,
+                         &QEventLoop::quit);
+        QObject::connect(&gate, &mimi::ui::AccountView::abandoned, &loop,
+                         &QEventLoop::quit);
+        loop.exec();
+        if (!entered) return 0;  // closed the window instead of signing in
+    }
 
     mimi::ui::MainWindow window;
     // winId() forces the NSWindow into existence without mapping it, so the

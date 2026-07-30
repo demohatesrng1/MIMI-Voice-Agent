@@ -104,6 +104,18 @@ public:
         // How long the microphone stays closed after she stops speaking, to
         // let the speaker and the room settle before listening resumes.
         std::chrono::milliseconds echo_tail{450};
+        // Cutting her off by simply talking over her, on the spotter backend.
+        //
+        // The wake-word backend can do this acoustically; the spotter cannot,
+        // because it has no model of the phrase and would transcribe her own
+        // voice back to her. So it watches level instead: speech this much
+        // louder than her playback, held this long, is a person leaning in
+        // rather than the speaker bleeding into the microphone. Without echo
+        // cancellation the threshold has to sit well above room bleed, which is
+        // why it is deliberately high -- a false trigger cuts her off mid-answer.
+        bool barge_in_on_speech = true;
+        float barge_in_rms = 0.055f;
+        std::chrono::milliseconds barge_in_hold{280};
 
         int whisper_threads = 4;
     };
@@ -194,6 +206,8 @@ private:
     std::atomic<bool> running_{false};
     std::atomic<bool> paused_{false};
     std::atomic<bool> speaking_{false};
+    // How long the caller has been talking over her, on the spotter path.
+    std::chrono::steady_clock::time_point loud_since_{};
     std::atomic<State> state_{State::Idle};
 
     std::deque<Job> jobs_;

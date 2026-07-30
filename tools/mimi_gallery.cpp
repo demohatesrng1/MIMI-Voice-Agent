@@ -4,17 +4,20 @@
 // native window chrome, so it verifies the drawing in isolation -- run it under
 // QT_QPA_PLATFORM=offscreen and inspect the images.
 
-#include "ui/ai_dock.hpp"
 #include "ui/ambient.hpp"
-#include "ui/canvas_view.hpp"
 #include "ui/command_palette.hpp"
 #include "ui/context_ribbon.hpp"
-#include "ui/digital_twin.hpp"
 #include "ui/home_view.hpp"
 #include "ui/live_thinking.hpp"
-#include "ui/mission_control.hpp"
 #include "ui/neural_search.hpp"
 #include "ui/presence.hpp"
+#include "brain/account.hpp"
+#include "ui/account_view.hpp"
+#include "ui/main_window.hpp"
+
+#include <QPushButton>
+#include "ui/notes_view.hpp"
+#include "ui/settings_view.hpp"
 #include "ui/timeline_view.hpp"
 #include "ui/workspace_dock.hpp"
 
@@ -103,7 +106,6 @@ int main(int argc, char** argv) {
         home->setPresence(Presence::Speaking);
         home->setExchange(QString::fromUtf8("バッテリーはどのくらい"),
                           QString::fromUtf8("87パーセントです。あと4時間ほど使えます。"));
-        home->setConfidence(0.9);
         home->workspace()->setContext(WorkspaceDock::Context::Coding);
         auto* s = stageWithRibbon(home, Presence::Speaking);
         pump(1300);
@@ -143,14 +145,6 @@ int main(int argc, char** argv) {
         save(ambient, out, shot.name);
     }
 
-    // 4) The infinite canvas, seeded with a connected cluster.
-    {
-        auto* canvas = new CanvasView;
-        auto* s = stage(canvas, Presence::Observing);
-        pump(900);
-        save(s, out, "07_canvas.png");
-    }
-
     // 5) The memory timeline.
     {
         auto* timeline = new TimelineView;
@@ -161,18 +155,81 @@ int main(int argc, char** argv) {
         save(s, out, "08_timeline.png");
     }
 
-    // 6) The AI dock, floating over the home surface.
+    // Notes -- real files, written by voice.
     {
-        auto* home = new HomeView;
-        home->setPresence(Presence::Observing);
-        auto* s = stageWithRibbon(home, Presence::Observing);
-        auto* dock = new AiDock(s);
-        dock->adjustSize();
-        dock->move(16, (s->height() - dock->height()) / 2);
-        dock->show();
-        dock->raise();
-        pump(700);
-        save(s, out, "10_ai_dock.png");
+        auto* notes = new NotesView;
+        auto* s = stage(notes, Presence::Observing);
+        pump(600);
+        save(s, out, "09_notes.png");
+    }
+
+    // Settings -- the live permission state.
+    {
+        auto* settings = new SettingsView;
+        auto* s = stage(settings, Presence::Observing);
+        pump(600);
+        save(s, out, "10_settings.png");
+    }
+
+    // The account gate: welcome, a sign-up question, and signing back in.
+    {
+        auto* gate = new AccountView;
+        gate->resize(880, 620);
+        gate->show();
+        pump(400);
+        gate->grab().save(out + QStringLiteral("/20_welcome.png"));
+        std::printf("  wrote 20_welcome.png\n");
+
+        // Walk into the sign-up flow and fill a step, so the question, the
+        // field and the progress line can all be seen at once.
+        for (auto* button : gate->findChildren<QPushButton*>()) {
+            if (button->text() == QStringLiteral("Create an account")) {
+                button->click();
+                break;
+            }
+        }
+        pump(200);
+        gate->grab().save(out + QStringLiteral("/21_signup.png"));
+        std::printf("  wrote 21_signup.png\n");
+        gate->close();
+    }
+
+    // Signing back in. Needs an account to exist, so one is made and removed.
+    {
+        mimi::brain::Accounts accounts;
+        const bool temporary = !accounts.exists();
+        if (temporary) {
+            accounts.sign_up("you@example.com", "a password", "you", "You", "You");
+        }
+        auto* gate = new AccountView;
+        gate->resize(880, 620);
+        gate->show();
+        pump(400);
+        gate->grab().save(out + QStringLiteral("/22_signin.png"));
+        std::printf("  wrote 22_signin.png\n");
+        gate->close();
+        if (temporary) accounts.forget();
+    }
+
+    // The whole window, chrome and all -- the only view that shows the title
+    // bar, the nav rail and a page together.
+    {
+        auto* window = new MainWindow;
+        window->resize(1180, 740);
+        window->show();
+        pump(1200);
+        const QPixmap shot = window->grab();
+        shot.save(out + QStringLiteral("/00_window.png"));
+        std::printf("  wrote 00_window.png\n");
+
+        // The interrupt control only exists while she is talking, so it has to
+        // be forced on to be reviewed.
+        if (auto* stop = window->findChild<QPushButton*>(QStringLiteral("stopBtn"))) {
+            stop->setVisible(true);
+            pump(200);
+            window->grab().save(out + QStringLiteral("/00b_window_speaking.png"));
+            std::printf("  wrote 00b_window_speaking.png\n");
+        }
     }
 
     // 7) The command palette, summoned over the workspace.
@@ -180,24 +237,10 @@ int main(int argc, char** argv) {
         auto* home = new HomeView;
         home->setPresence(Presence::Observing);
         auto* s = stageWithRibbon(home, Presence::Observing);
-        auto* dock = new AiDock(s);
-        dock->adjustSize();
-        dock->move(16, (s->height() - dock->height()) / 2);
-        dock->show();
-        dock->raise();
         auto* palette = new CommandPalette(s);
         palette->open();  // resizes to the stage, shows, focuses, fills the list
         pump(500);
         save(s, out, "11_command_palette.png");
-    }
-
-    // 8) Mission Control: a mission opened, its workspace assembled card by card.
-    {
-        auto* missions = new MissionControl;
-        auto* s = stageWithRibbon(missions, Presence::Thinking);
-        missions->openMission(0);  // a click would do this
-        pump(2900);                // let all seven step cards land
-        save(s, out, "12_mission_control.png");
     }
 
     // 9) Neural search, understanding a description rather than a filename.
@@ -209,7 +252,7 @@ int main(int argc, char** argv) {
         search->open();
         // Seed a query so the ranked results show.
         if (auto* field = s->findChild<QLineEdit*>(QStringLiteral("paletteField")))
-            field->setText(QStringLiteral("the deck John liked"));
+            field->setText(QStringLiteral("router"));
         pump(400);
         save(s, out, "13_neural_search.png");
     }
@@ -231,14 +274,6 @@ int main(int argc, char** argv) {
         ambient->show();
         pump(700);
         save(ambient, out, "14_adaptive_simple.png");
-    }
-
-    // 11) Digital Twin: what she's learned about you.
-    {
-        auto* twin = new DigitalTwin;
-        auto* s = stageWithRibbon(twin, Presence::Observing);
-        pump(700);
-        save(s, out, "15_digital_twin.png");
     }
 
     qInfo().noquote() << "gallery ->" << out;

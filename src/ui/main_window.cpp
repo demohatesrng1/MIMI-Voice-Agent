@@ -1,22 +1,23 @@
 #include "ui/main_window.hpp"
 
+#include "ui/notes_view.hpp"
+
 #include "core/log.hpp"
 #include "core/paths.hpp"
-#include "ui/ai_dock.hpp"
 #include "ui/ambient.hpp"
-#include "ui/ambient_notice.hpp"
-#include "ui/canvas_view.hpp"
 #include "ui/command_bar.hpp"
 #include "ui/command_palette.hpp"
+#include "brain/accessibility.hpp"
+#include "brain/journal.hpp"
+#include "brain/notes.hpp"
+#include "brain/tools.hpp"
 #include "ui/context_ribbon.hpp"
 #include "ui/controls.hpp"
-#include "ui/digital_twin.hpp"
+#include "ui/settings_view.hpp"
 #include "ui/icons.hpp"
 #include "ui/mac_window.hpp"
-#include "ui/mission_control.hpp"
 #include "ui/neural_search.hpp"
 #include "ui/presence.hpp"
-#include "ui/relationship_graph.hpp"
 #include "ui/timeline_view.hpp"
 
 #include <QApplication>
@@ -44,7 +45,14 @@ constexpr std::string_view kTag = "ui";
 // out in (~38pt), so the buttons sit optically centred against our controls.
 constexpr int kTitleBarHeight = 40;
 
-enum Page { PageHome = 0, PageCanvas, PageTimeline, PageMissions, PageSettings, PageGraph };
+// Only surfaces backed by something real.
+//
+// Canvas, Missions and Relationships were cut: each was a page of invented
+// content -- a client called Acme Corp, a Q3 proposal, a launch plan -- with no
+// way to put anything true into it. A page that can only ever show a fixture is
+// a screenshot, not a feature. The classes are still in the tree for when they
+// have a real source.
+enum Page { PageHome = 0, PageNotes, PageTimeline, PageSettings };
 
 // The drag surface that replaces the hidden system title bar. Interactive
 // children accept their own mouse events, so a press only lands here through
@@ -113,24 +121,27 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
 
     // The context ribbon: what she understands the work to be, always on show
     // just under the chrome.
-    ribbon_ = new ContextRibbon;
-    column->addWidget(ribbon_);
+
+    // The ribbon reports what is actually true right now: the app she would act
+    // on if you asked, and how many notes she is holding. Polled, because macOS
+    // has no notification for "the frontmost app changed" that does not require
+    // observing every process.
+    contextTimer_ = new QTimer(this);
+    contextTimer_->setInterval(2000);
+    connect(contextTimer_, &QTimer::timeout, this, &MainWindow::refreshContext);
+    contextTimer_->start();
 
     pages_ = new QStackedWidget;
     home_ = new HomeView;
-    canvas_ = new CanvasView;
+    notes_ = new NotesView;
     timeline_ = new TimelineView;
-    missions_ = new MissionControl;
-    settings_ = new DigitalTwin;  // the Settings slot now shows what she's learned
-    graph_ = new RelationshipGraph;
+    settings_ = new SettingsView;
 
     // Order matters: it is the Page enum.
     pages_->addWidget(home_);
-    pages_->addWidget(canvas_);
+    pages_->addWidget(notes_);
     pages_->addWidget(timeline_);
-    pages_->addWidget(missions_);
     pages_->addWidget(settings_);
-    pages_->addWidget(graph_);
     column->addWidget(pages_, 1);
 
     // Layer 2: the command bar, floating clear of every edge on its shadow.
@@ -138,18 +149,6 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     composer_->setMaximumWidth(640);
     connect(composer_, &CommandBar::submitted, this, &MainWindow::ask);
     connect(composer_, &CommandBar::micClicked, this, &MainWindow::onMicClicked);
-
-    // Ambient intelligence: an unprompted observation, floating above the bar.
-    auto* noticeRow = new QWidget;
-    auto* noticeLine = new QHBoxLayout(noticeRow);
-    noticeLine->setContentsMargins(48, 0, 48, 8);
-    noticeLine->addStretch(1);
-    auto* notice = new AmbientNotice;
-    noticeLine->addWidget(notice);
-    noticeLine->addStretch(1);
-    column->addWidget(noticeRow);
-    notice->notice(
-        QStringLiteral("I noticed you've opened the proposal three times today — want a hand?"));
 
     auto* dock = new QWidget;
     auto* dockRow = new QHBoxLayout(dock);
@@ -159,15 +158,35 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     dockRow->addStretch(1);
     column->addWidget(dock);
 
+    // The context strip lives at the foot, as a status bar. Directly under the
+    // title bar it was a second band of chrome saying very little -- two rows
+    // of furniture before any content, which is the thing an editor never does.
+    // At the bottom it reads as status, which is what it is.
+    ribbon_ = new ContextRibbon;
+    column->addWidget(ribbon_);
+    refreshContext();  // after the ribbon exists, or it fills nothing
+
+    // Old journal days go at startup, so the log has a bounded life without
+    // anyone having to remember to clear it.
+    brain::Journal().prune(90);
+
+    // Reminders set before the last quit. Anything already due fires straight
+    // away, which is how a reminder survives the app being closed at all.
+    brain::tools::restore_reminders([this](const std::string& text) {
+        const std::string spoken = brain::tools::reminder_announcement(text);
+        brain::tools::notify("ミミ", "リマインダー", spoken);
+        brain::tools::play_notification_cue();
+        QMetaObject::invokeMethod(this, [this, spoken] {
+            say(QString::fromStdString(spoken));
+        }, Qt::QueuedConnection);
+    });
+
     setCentralWidget(root);
 
     connect(home_, &HomeView::commandRequested, this, &MainWindow::ask);
 
     // Floating overlays, parented to the ambient root so they hover over the
     // pages. Positioned by layoutOverlays(), not the column layout.
-    aiDock_ = new AiDock(ambient_);
-    connect(aiDock_, &AiDock::itemSelected, this, &MainWindow::onDockItem);
-
     palette_ = new CommandPalette(ambient_);
     connect(palette_, &CommandPalette::commandChosen, this, &MainWindow::ask);
     connect(palette_, &CommandPalette::navigateChosen, this, &MainWindow::navigate);
@@ -187,6 +206,14 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     connect(puck_, &FloatingOrb::doubleClicked, this, &MainWindow::onMicClicked);
     connect(puck_, &FloatingOrb::muteRequested, this, &MainWindow::setMuted);
     connect(puck_, &FloatingOrb::quitRequested, qApp, &QApplication::quit);
+    // The orb is meant to be always there. Switching to another application is
+    // exactly when macOS would order a panel out, so re-assert it then -- and
+    // show it again if anything managed to hide it.
+    connect(qApp, &QApplication::applicationStateChanged, puck_, [this] {
+        if (puck_ == nullptr) return;
+        if (!puck_->isVisible()) puck_->show();
+        puck_->pinToAllSpaces();
+    });
 
     // She files an exchange away when it finishes: this holds the "Updating
     // memory" beat before the real voice state resumes.
@@ -210,7 +237,6 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     });
 
     navigate(PageHome);
-    applyUiMode(mode_->expert());  // start in Expert: everything on show
 }
 
 MainWindow::~MainWindow() {
@@ -220,6 +246,11 @@ MainWindow::~MainWindow() {
 }
 
 void MainWindow::applyNativeChrome() {
+    // Every call below reaches through to an NSWindow. Under the offscreen
+    // platform plugin there is not one, and asking for it takes the process
+    // down -- which is why the whole window could never be rendered for review
+    // and only its individual pages could.
+    if (QGuiApplication::platformName() == QLatin1String("offscreen")) return;
     adopt_native_titlebar(this);
     add_window_vibrancy(this);
     if (auto* spacer = findChild<QWidget*>(QStringLiteral("trafficLights"))) {
@@ -243,32 +274,22 @@ void MainWindow::resizeEvent(QResizeEvent* event) {
 
 // The floating overlays are children of the ambient root, not the column
 // layout, so they are placed by hand whenever the window changes size.
-void MainWindow::layoutOverlays() {
-    if (ambient_ == nullptr) return;
-    if (aiDock_ != nullptr) {
-        aiDock_->adjustSize();
-        const int y = std::max((ambient_->height() - aiDock_->height()) / 2, 60);
-        aiDock_->move(16, y);
-        aiDock_->raise();
-    }
-    if (palette_ != nullptr) palette_->setGeometry(ambient_->rect());
-    if (search_ != nullptr) search_->setGeometry(ambient_->rect());
+void MainWindow::refreshContext() {
+    if (ribbon_ == nullptr) return;
+    const QString front = QString::fromStdString(brain::ax::frontmost_app());
+    ribbon_->setTask(front);
+
+    const int notes = static_cast<int>(brain::Notes().all().size());
+    ribbon_->setMetric(QStringLiteral("NOTES"), QString::number(notes));
+    ribbon_->setMetric(QStringLiteral("CONTROL"),
+                       brain::ax::has_permission() ? QStringLiteral("On")
+                                                   : QStringLiteral("Off"));
 }
 
-void MainWindow::onDockItem(int item) {
-    switch (static_cast<AiDock::Item>(item)) {
-        case AiDock::Voice:  onMicClicked();        break;
-        case AiDock::Chat:   navigate(PageHome);    break;
-        case AiDock::Files:  navigate(PageCanvas);  break;
-        case AiDock::Memory: navigate(PageTimeline); break;
-        // Vision, Browser and Automation do not have their own surfaces yet;
-        // the command surface stands in so the faculty still does something.
-        case AiDock::Vision:
-        case AiDock::Browser:
-        case AiDock::Automation:
-            palette_->open();
-            break;
-    }
+void MainWindow::layoutOverlays() {
+    if (ambient_ == nullptr) return;
+    if (palette_ != nullptr) palette_->setGeometry(ambient_->rect());
+    if (search_ != nullptr) search_->setGeometry(ambient_->rect());
 }
 
 // ----------------------------------------------------------------- title bar
@@ -293,50 +314,35 @@ QWidget* MainWindow::buildTitleBar() {
     name->setObjectName(QStringLiteral("wordmark"));
     layout->addWidget(name);
 
-    // Navigation: the three places she keeps your work. Home is her; Canvas is
-    // the infinite workspace; Memory is everything threaded in time.
-    layout->addSpacing(16);
+    // Navigation. A rule separates it from the wordmark, so the row reads as
+    // "name, then places" rather than four icons trailing a label.
+    layout->addSpacing(14);
+    auto* rule = new QWidget;
+    rule->setObjectName(QStringLiteral("chromeRule"));
+    rule->setFixedSize(1, 18);
+    layout->addWidget(rule);
+    layout->addSpacing(10);
     navHome_ = new GhostButton(icons::Glyph::Home);
     navHome_->setCheckable(true);
     navHome_->setToolTip(QStringLiteral("Home"));
     connect(navHome_, &GhostButton::clicked, this, [this] { navigate(PageHome); });
     layout->addWidget(navHome_);
 
-    navCanvas_ = new GhostButton(icons::Glyph::Canvas);
-    navCanvas_->setCheckable(true);
-    navCanvas_->setToolTip(QStringLiteral("Canvas — your infinite workspace"));
-    connect(navCanvas_, &GhostButton::clicked, this, [this] { navigate(PageCanvas); });
-    layout->addWidget(navCanvas_);
-
     navTimeline_ = new GhostButton(icons::Glyph::Timeline);
     navTimeline_->setCheckable(true);
-    navTimeline_->setToolTip(QStringLiteral("Memory — everything, connected in time"));
+    navTimeline_->setToolTip(QStringLiteral("Memory — everything she has done"));
     connect(navTimeline_, &GhostButton::clicked, this, [this] { navigate(PageTimeline); });
     layout->addWidget(navTimeline_);
 
-    navMissions_ = new GhostButton(icons::Glyph::Mission);
-    navMissions_->setCheckable(true);
-    navMissions_->setToolTip(QStringLiteral("Missions — open a goal, not an app"));
-    connect(navMissions_, &GhostButton::clicked, this, [this] { navigate(PageMissions); });
-    layout->addWidget(navMissions_);
-
-    navGraph_ = new GhostButton(icons::Glyph::Skills);
-    navGraph_->setCheckable(true);
-    navGraph_->setToolTip(QStringLiteral("Relationships — connections, not folders"));
-    connect(navGraph_, &GhostButton::clicked, this, [this] { navigate(PageGraph); });
-    layout->addWidget(navGraph_);
+    navNotes_ = new GhostButton(icons::Glyph::Files);
+    navNotes_->setCheckable(true);
+    navNotes_->setToolTip(QStringLiteral("Notes"));
+    connect(navNotes_, &GhostButton::clicked, this, [this] { navigate(PageNotes); });
+    layout->addWidget(navNotes_);
 
     // The middle of the bar is empty on purpose: it is the drag surface,
     // exactly like a native title bar.
     layout->addStretch(1);
-
-    // Adaptive UI: the Simple/Expert switch that shows or hides the power
-    // surfaces across the whole app.
-    mode_ = new ModeToggle;
-    mode_->setToolTip(QStringLiteral("Simple hides the power tools; Expert shows them all"));
-    connect(mode_, &ModeToggle::toggled, this, &MainWindow::applyUiMode);
-    layout->addWidget(mode_);
-    layout->addSpacing(8);
 
     // One status capsule instead of a scatter of badges: a dot and a word.
     auto* pill = new QWidget;
@@ -356,12 +362,24 @@ QWidget* MainWindow::buildTitleBar() {
 
     layout->addSpacing(8);
 
-    // Voice controls, in full: the talk button, and mute spelled out as a
-    // proper labelled control next to it rather than a mystery icon.
-    talkBtn_ = new GhostButton(icons::Glyph::Mic);
-    talkBtn_->setToolTip(QStringLiteral("Speak now — no wake word needed"));
-    connect(talkBtn_, &GhostButton::clicked, this, &MainWindow::onMicClicked);
-    layout->addWidget(talkBtn_);
+    // Interrupting her, as a button.
+    //
+    // Talking over her works, but it needs a raised voice and a working
+    // microphone, and neither is guaranteed while she is mid-sentence with the
+    // speakers up. A control that is simply there whenever she is talking is
+    // the one way to stop her that cannot fail. Hidden the rest of the time --
+    // it has nothing to do until she speaks.
+    stopBtn_ = new QPushButton(QStringLiteral("Stop"));
+    stopBtn_->setObjectName(QStringLiteral("stopBtn"));
+    stopBtn_->setCursor(Qt::PointingHandCursor);
+    stopBtn_->setFixedHeight(26);
+    stopBtn_->setToolTip(QStringLiteral("Stop talking"));
+    stopBtn_->setVisible(false);
+    connect(stopBtn_, &QPushButton::clicked, this, [this] {
+        if (speaker_) speaker_->stop();
+        if (listener_) listener_->set_speaking(false);
+    });
+    layout->addWidget(stopBtn_);
 
     mutePill_ = new QPushButton(QStringLiteral("Mute"));
     mutePill_->setObjectName(QStringLiteral("mutePill"));
@@ -371,7 +389,7 @@ QWidget* MainWindow::buildTitleBar() {
     mutePill_->setToolTip(QStringLiteral("Stop listening"));
     connect(mutePill_, &QPushButton::toggled, this, [this](bool muted) {
         setMuted(muted);
-        mutePill_->setText(muted ? QStringLiteral("Muted") : QStringLiteral("Mute"));
+        mutePill_->setText(muted ? QStringLiteral("Unmute") : QStringLiteral("Mute"));
     });
     layout->addWidget(mutePill_);
 
@@ -391,16 +409,11 @@ QWidget* MainWindow::buildTitleBar() {
 void MainWindow::navigate(int page) {
     pages_->setCurrentIndex(page);
     if (navHome_ != nullptr) navHome_->setChecked(page == PageHome);
-    if (navCanvas_ != nullptr) navCanvas_->setChecked(page == PageCanvas);
     if (navTimeline_ != nullptr) navTimeline_->setChecked(page == PageTimeline);
-    if (navMissions_ != nullptr) navMissions_->setChecked(page == PageMissions);
-    if (navGraph_ != nullptr) navGraph_->setChecked(page == PageGraph);
+    if (navNotes_ != nullptr) navNotes_->setChecked(page == PageNotes);
+    // The voice path writes notes straight to disk, so re-read on the way in.
+    if (page == PageNotes && notes_ != nullptr) notes_->refresh();
     settingsBtn_->setChecked(page == PageSettings);
-}
-
-void MainWindow::applyUiMode(bool expert) {
-    if (aiDock_ != nullptr) aiDock_->setVisible(expert);
-    if (ribbon_ != nullptr) ribbon_->setCompact(!expert);
 }
 
 void MainWindow::setMuted(bool muted) {
@@ -488,14 +501,18 @@ void MainWindow::onState(int state) {
     // its course before the live voice state repaints the room.
     if (!remembering_) applyPresence(presence_for(voiceState_));
 
+    if (stopBtn_ != nullptr) {
+        stopBtn_->setVisible(voiceState_ == voice::State::Speaking);
+    }
+
     const bool live = voiceState_ != voice::State::Paused;
     if (mutePill_ != nullptr) {
         const bool blocked = mutePill_->blockSignals(true);
         mutePill_->setChecked(!live);
         mutePill_->blockSignals(blocked);
-        mutePill_->setText(live ? QStringLiteral("Mute") : QStringLiteral("Muted"));
+        mutePill_->setText(live ? QStringLiteral("Mute") : QStringLiteral("Unmute"));
         mutePill_->setToolTip(live ? QStringLiteral("Stop listening")
-                                   : QStringLiteral("Muted — click to resume"));
+                                   : QStringLiteral("Start listening again"));
     }
 }
 
@@ -565,15 +582,16 @@ void MainWindow::ask(const QString& utterance) {
 }
 
 void MainWindow::deliver(const QString& reply, const QString& action, bool acted) {
-    Q_UNUSED(action);
     home_->setExchange(pending_, reply);
 
-    // Confidence read-out. Provisional heuristic until the router returns a real
-    // signal: a concrete action that succeeded is near-certain; a plain answer is
-    // graded by how substantial it is. Deterministic per reply, never random.
-    const double substance = std::min(static_cast<int>(reply.size()), 160) / 160.0;
-    const double confidence = acted ? 0.97 : 0.72 + 0.2 * substance;
-    home_->setConfidence(std::clamp(confidence, 0.0, 0.99));
+    // A few actions are about a place in the app, not only an answer. Asking
+    // for her notes should put them on screen, not just say something about
+    // them -- otherwise "open my notes" is the one request that leaves you
+    // exactly where you started.
+    if (action == QStringLiteral("open_notes") || action == QStringLiteral("take_note") ||
+        action == QStringLiteral("read_notes") || action == QStringLiteral("ask_notes")) {
+        navigate(PageNotes);
+    }
 
     // The exchange becomes a memory the moment it completes.
     timeline_->remember(pending_, reply);

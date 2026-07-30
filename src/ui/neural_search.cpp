@@ -1,5 +1,8 @@
 #include "ui/neural_search.hpp"
 
+#include "brain/journal.hpp"
+#include "brain/notes.hpp"
+
 #include "ui/theme.hpp"
 
 #include <QHBoxLayout>
@@ -18,29 +21,46 @@ namespace {
 // A searchable thing. keywords carry the meaning that lets a description find
 // it; navPage is the surface it lives on (Page enum).
 struct Doc {
-    const char* title;
-    const char* kind;
-    const char* keywords;
-    int navPage;
+    QString title;
+    QString kind;
+    QString keywords;  // the body or her reply -- what makes it findable
+    int navPage;       // the surface it lives on (Page enum)
 };
 
-constexpr std::array<Doc, 8> kCorpus{{
-    {"Hero mockup", "Image", "presentation slides deck design mockup john liked visual", 1},
-    {"Q3 proposal (final)", "File", "proposal document pricing final version export report", 2},
-    {"Client kickoff notes", "Note", "meeting kickoff scope notes acme requirements", 2},
-    {"deploy.sh", "Code", "script deploy build shell command release", 1},
-    {"Voice memo · 0:42", "Voice", "recording idea onboarding walk audio note", 1},
-    {"Generated summary", "Report", "meeting summary transcript auto draft recap", 2},
-    {"Positioning", "Note", "positioning brand strategy calm private message", 1},
-    {"Client feedback", "Action", "feedback pricing changes requested acme review", 2},
-}};
+// Nothing is hardcoded here any more. This searched a fixed list of eight
+// invented documents -- a Q3 proposal, a client called Acme, a deploy script --
+// so the same eight results came back on every machine no matter what you had
+// actually done. It now reads her notes and her journal.
+std::vector<Doc> collect() {
+    std::vector<Doc> docs;
+    for (const auto& note : brain::Notes().all()) {
+        docs.push_back({QString::fromStdString(note.title), QStringLiteral("Note"),
+                        QString::fromStdString(note.body), 1});
+    }
+    brain::Journal journal;
+    const auto days = journal.days();
+    for (auto day = days.rbegin(); day != days.rend(); ++day) {
+        for (const auto& event : journal.read_day(*day)) {
+            const auto text = [&event](const char* key) {
+                return event.record.contains(key) && event.record[key].is_string()
+                           ? QString::fromStdString(event.record[key]).trimmed()
+                           : QString();
+            };
+            const QString said = text("said");
+            if (said.isEmpty()) continue;
+            docs.push_back({said, QString::fromStdString(event.kind), text("replied"), 2});
+        }
+        if (docs.size() > 400) break;  // enough to search; the rest is history
+    }
+    return docs;
+}
 
 constexpr int kRoleNav = Qt::UserRole;
 
 int score(const Doc& doc, const QStringList& tokens) {
     if (tokens.isEmpty()) return 1;  // no query: everything is a weak match
-    const QString title = QString::fromUtf8(doc.title).toLower();
-    const QString keys = QString::fromUtf8(doc.keywords);
+    const QString title = doc.title.toLower();
+    const QString keys = doc.keywords;
     int s = 0;
     for (const QString& t : tokens) {
         if (t.size() < 2) continue;
@@ -111,20 +131,23 @@ void NeuralSearch::dismiss() { hide(); }
 void NeuralSearch::rank(const QString& query) {
     const QStringList tokens = query.toLower().split(' ', Qt::SkipEmptyParts);
 
-    // Score, then present strongest first.
-    std::array<int, kCorpus.size()> order{};
-    for (int i = 0; i < static_cast<int>(kCorpus.size()); ++i) order[i] = i;
+    // Re-read each time it opens: a note taken by voice a moment ago has to be
+    // findable without restarting the app.
+    const std::vector<Doc> corpus = collect();
+
+    std::vector<int> order(corpus.size());
+    for (std::size_t i = 0; i < corpus.size(); ++i) order[i] = static_cast<int>(i);
     std::stable_sort(order.begin(), order.end(), [&](int a, int b) {
-        return score(kCorpus[a], tokens) > score(kCorpus[b], tokens);
+        return score(corpus[a], tokens) > score(corpus[b], tokens);
     });
 
     list_->clear();
     for (int i : order) {
-        if (score(kCorpus[i], tokens) <= 0) continue;
-        const Doc& d = kCorpus[i];
+        if (score(corpus[i], tokens) <= 0) continue;
+        if (list_->count() >= 40) break;
+        const Doc& d = corpus[i];
         auto* item = new QListWidgetItem(
-            QStringLiteral("%1      %2").arg(QString::fromUtf8(d.title),
-                                             QString::fromUtf8(d.kind)));
+            QStringLiteral("%1      %2").arg(d.title.left(70), d.kind));
         item->setData(kRoleNav, d.navPage);
         list_->addItem(item);
     }

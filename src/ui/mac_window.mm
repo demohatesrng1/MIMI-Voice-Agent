@@ -118,6 +118,32 @@ int traffic_light_inset(QWidget* widget) {
     return static_cast<int>(NSMaxX(in_window)) + 12;
 }
 
+void pin_overlay_window(QWidget* widget) {
+    NSWindow* window = native_window(widget);
+    if (window == nil) return;
+
+    // hidesOnDeactivate is the actual cause of the orb disappearing: NSPanel
+    // defaults it to YES, so AppKit orders the window out the moment another
+    // application comes forward.
+    window.hidesOnDeactivate = NO;
+    window.level = NSFloatingWindowLevel;
+    window.collectionBehavior = NSWindowCollectionBehaviorCanJoinAllSpaces |
+                                NSWindowCollectionBehaviorStationary |
+                                NSWindowCollectionBehaviorFullScreenAuxiliary |
+                                NSWindowCollectionBehaviorIgnoresCycle;
+    // Clicking the orb must not steal focus from whatever the user was typing
+    // in, and the panel must not be a candidate for becoming the key window
+    // when the app is activated.
+    if ([window isKindOfClass:[NSPanel class]]) {
+        NSPanel* panel = (NSPanel*)window;
+        panel.floatingPanel = YES;
+        panel.becomesKeyOnlyIfNeeded = YES;
+        panel.worksWhenModal = YES;
+    }
+    // Survives the window being ordered out by something else.
+    [window setCanHide:NO];
+}
+
 void titlebar_double_clicked(QWidget* widget) {
     NSWindow* window = native_window(widget);
     if (window == nil) return;

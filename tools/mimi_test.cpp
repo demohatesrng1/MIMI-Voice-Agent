@@ -1,0 +1,255 @@
+// mimi_test -- assertions over the deterministic half of the router.
+//
+// Everything checked here runs without the language model: these are the rules
+// that match on phrasing alone, which is most of what Mimi does and all of what
+// has to keep working when the model underneath her changes. Each case is a bug
+// that was found by hand and would otherwise be found by hand again.
+//
+//   mimi_test          run them
+//   mimi_test -v       print every case, not just failures
+//
+// Deliberately not a framework. One file, no dependencies, exits non-zero on
+// failure so it can gate a commit.
+
+#include "brain/account.hpp"
+#include "brain/notes.hpp"
+#include "core/paths.hpp"
+#include "brain/router.hpp"
+#include "brain/tools.hpp"
+#include "core/log.hpp"
+
+#include <cstdio>
+#include <fstream>
+#include <iterator>
+#include <cstdlib>
+#include <string>
+#include <vector>
+
+using namespace mimi::brain;
+
+namespace {
+
+int checks = 0;
+int failures = 0;
+bool verbose = false;
+
+void check(bool ok, const std::string& what, const std::string& detail = {}) {
+    ++checks;
+    if (ok) {
+        if (verbose) std::printf("  ok    %s\n", what.c_str());
+        return;
+    }
+    ++failures;
+    std::printf("  FAIL  %s%s%s\n", what.c_str(), detail.empty() ? "" : "  -- ",
+                detail.c_str());
+}
+
+void equal(const std::string& got, const std::string& want, const std::string& what) {
+    check(got == want, what, got == want ? "" : "got '" + got + "', want '" + want + "'");
+}
+
+// --- app names --------------------------------------------------------------
+
+void test_app_resolution() {
+    std::puts("\napp names");
+
+    // Aliases only count when the app is really installed. Returning "Google
+    // Chrome" on a Mac without it made open_app fail, which sent the caller to
+    // its website fallback and opened a fabricated https://クローム.com.
+    for (const char* spoken : {"discord", "ディスコード", "line", "ライン"}) {
+        const std::string app = tools::resolve_app_name(spoken);
+        check(!app.empty(), std::string("resolves ") + spoken, "got nothing");
+    }
+    check(tools::resolve_app_name("definitelynotaninstalledapp").empty(),
+          "unknown app resolves to nothing");
+
+    // Filler words around the name must not defeat the match.
+    equal(tools::resolve_app_name("ディスコードを起動して"), "Discord",
+          "strips Japanese filler");
+    equal(tools::resolve_app_name("open discord"), "Discord", "strips English filler");
+    equal(tools::resolve_app_name("OPEN Discord"), "Discord", "ignores ASCII case");
+}
+
+// --- sites ------------------------------------------------------------------
+
+void test_site_resolution() {
+    std::puts("\nsite names");
+
+    equal(tools::url_for_site("youtube"), "https://youtube.com", "known site");
+    equal(tools::url_for_site("github.com"), "https://github.com", "explicit domain");
+    // A spoken Japanese app name is not a hostname. Guessing one produced
+    // https://スポティファイ.com, which is what "open Spotify" used to do.
+    check(tools::url_for_site("スポティファイ").empty(),
+          "does not invent a domain from Japanese");
+}
+
+// --- folders ----------------------------------------------------------------
+
+void test_folders() {
+    std::puts("\nfolders");
+    for (const char* spoken : {"ダウンロード", "downloads", "デスクトップ", "書類"}) {
+        check(!tools::folder_for_name(spoken).empty(), std::string("finds ") + spoken);
+    }
+    // The particle left behind when フォルダ is stripped used to defeat this.
+    check(!tools::folder_for_name("デスクトップ").empty(), "bare folder name");
+}
+
+// --- routing ----------------------------------------------------------------
+
+// The rules layer needs an Ollama to construct a Router, but none of the cases
+// below should reach the model. Any that does is itself the bug.
+void test_routing(Router& router) {
+    std::puts("\nrouting");
+
+    struct Case {
+        const char* utterance;
+        const char* action;
+        const char* why;
+    };
+
+    const std::vector<Case> cases{
+        // Single commands take the free deterministic path.
+        {"今何時", "time", "bare clock question"},
+        {"バッテリーはどのくらい", "battery", "battery"},
+        {"音量を上げて", "volume_up", "volume up"},
+        {"ミュートして", "mute", "mute"},
+
+        // 何時 with a topic in front is a question about that topic, not the
+        // wall clock: "会議は何時から" used to be answered with the time.
+        {"会議は何時からだっけ", "ask_notes", "topic before 何時 is not the clock"},
+
+        // Two commands in one breath. The rules layer used to answer the first
+        // and silently drop the second.
+        {"音量を上げて次の曲にして", "volume_up+media_next", "two commands run in order"},
+
+        // メモ is three different requests depending on the verb. Any utterance
+        // mentioning it used to become a new note.
+        {"テストとメモして", "take_note", "explicit verb writes a note"},
+        {"メモを読んで", "read_notes", "reads them back"},
+        {"メモを要約して", "ask_notes", "summarises through the model"},
+        // メモ帳 is a notepad, and hers is the one being asked for.
+        {"メモ帳を開いて", "open_notes", "メモ帳 opens her own notes"},
+
+        // Apps, sites and files share one phrasing.
+        {"ディスコードを開いて", "launch_app", "installed app"},
+        {"open youtube", "open_site", "site, not an app"},
+        {"ダウンロードフォルダを開いて", "open_folder", "folder before app"},
+
+        // Questions must not be captured by the search rule.
+        {"富士山について教えて", "chat", "a question is answered, not searched"},
+    };
+
+    for (const Case& c : cases) {
+        const Reply reply = router.route(c.utterance);
+        equal(reply.action, c.action, c.why);
+    }
+}
+
+// --- notes ------------------------------------------------------------------
+
+void test_notes() {
+    std::puts("\nnotes");
+    Notes notes;
+
+    const Note written = notes.add("会議は午後3時から、資料は木曜まで");
+    check(written.valid(), "writes a note");
+    check(!notes.all(1).empty(), "reads it back");
+
+    // Substring search cannot answer a paraphrase; bigram relevance is what
+    // lets "会議は何時からだっけ" find the note that answers it.
+    check(!notes.relevant("会議は何時からだっけ", 3).empty(),
+          "finds a note by meaning, not substring");
+    check(notes.relevant("まったく無関係な話題です", 3).empty(),
+          "does not match an unrelated question");
+
+    if (!written.id.empty()) notes.remove(written.id);
+}
+
+// --- reminders --------------------------------------------------------------
+
+void test_reminders() {
+    std::puts("\nreminders");
+    // A stored reminder is only the fragment that was said. Announcing that
+    // bare word tells the user nothing about why their Mac just spoke.
+    equal(tools::reminder_announcement("休憩"), "休憩の時間です。", "a noun takes の");
+    equal(tools::reminder_announcement("薬を飲む"), "薬を飲む時間です。",
+          "a plain-form verb does not");
+    equal(tools::reminder_announcement("ゴミを出して"), "ゴミを出して、という時間です。",
+          "an instruction is announced as one");
+    check(!tools::reminder_announcement("").empty(), "an empty reminder still says something");
+}
+
+// --- accounts ---------------------------------------------------------------
+
+void test_accounts() {
+    std::puts("\naccounts");
+    Accounts accounts;
+    accounts.forget();  // start from nothing
+
+    check(!accounts.exists(), "no account to begin with");
+    // A missing account must never read as a successful login.
+    check(!accounts.verify("someone@example.com", "anything"),
+          "cannot sign in when no account exists");
+
+    const bool made = accounts.sign_up("Demo@Example.com", "correct horse battery",
+                                       "demo", "Demo Person", "Demo");
+    check(made, "signs up");
+    check(accounts.exists(), "account now exists");
+    check(!accounts.sign_up("other@example.com", "x", "o", "O", "O"),
+          "will not overwrite an existing account");
+
+    check(accounts.verify("demo@example.com", "correct horse battery"),
+          "correct password verifies");
+    check(accounts.verify("DEMO@EXAMPLE.COM", "correct horse battery"),
+          "email is case-insensitive");
+    check(!accounts.verify("demo@example.com", "wrong password"),
+          "wrong password is rejected");
+    check(!accounts.verify("nobody@example.com", "correct horse battery"),
+          "wrong email is rejected");
+
+    const Account loaded = accounts.load();
+    equal(loaded.username, "demo", "keeps the username");
+    equal(loaded.preferred, "Demo", "keeps what to call them");
+
+    // The password itself must not be recoverable from the file.
+    std::ifstream file(mimi::paths::data_file("account.json"));
+    std::string contents((std::istreambuf_iterator<char>(file)),
+                         std::istreambuf_iterator<char>());
+    check(contents.find("correct horse battery") == std::string::npos,
+          "the password is not written to disk");
+    check(contents.find("digest") != std::string::npos, "a digest is stored instead");
+
+    accounts.forget();
+    check(!accounts.exists(), "forgets on request");
+}
+
+}  // namespace
+
+int main(int argc, char** argv) {
+    mimi::log::configure_from_env();
+    // Nothing in this suite may touch the machine it runs on. Without this the
+    // routing cases genuinely launched Discord, opened youtube.com and threw a
+    // Finder window up, every single run.
+    tools::set_rehearsing(true);
+    for (int i = 1; i < argc; ++i) {
+        if (std::string(argv[i]) == "-v") verbose = true;
+    }
+
+    test_app_resolution();
+    test_site_resolution();
+    test_folders();
+    test_notes();
+    test_accounts();
+    test_reminders();
+
+    Ollama ollama({});
+    if (ollama.ensure_running()) {
+        Router router(ollama);
+        test_routing(router);
+    } else {
+        std::puts("\nrouting\n  SKIPPED -- Ollama is not running");
+    }
+
+    std::printf("\n%d checks, %d failed\n", checks, failures);
+    return failures == 0 ? 0 : 1;
+}

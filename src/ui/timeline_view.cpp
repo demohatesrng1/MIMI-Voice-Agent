@@ -1,5 +1,7 @@
 #include "ui/timeline_view.hpp"
 
+#include <QLabel>
+
 #include "ui/theme.hpp"
 
 #include <QLinearGradient>
@@ -136,7 +138,7 @@ void TimelineStrip::paintEvent(QPaintEvent*) {
         if (m.day != prevDay) {
             // Day header: a tracked-out label with a hairline reaching right.
             QFont head = font();
-            head.setPixelSize(10);
+            head.setPixelSize(13);
             head.setWeight(QFont::DemiBold);
             head.setLetterSpacing(QFont::AbsoluteSpacing, 2.5);
             painter.setFont(head);
@@ -157,7 +159,7 @@ void TimelineStrip::paintEvent(QPaintEvent*) {
 
         // Time, in the gutter left of the spine.
         QFont timeFont = font();
-        timeFont.setPixelSize(11);
+        timeFont.setPixelSize(14);
         painter.setFont(timeFont);
         painter.setPen(theme::kFaint);
         painter.drawText(QRect(0, cy - 10, kDotX - 22, 20), Qt::AlignVCenter | Qt::AlignRight,
@@ -203,7 +205,7 @@ void TimelineStrip::paintEvent(QPaintEvent*) {
         painter.drawEllipse(QPointF(card.left() + 16, card.top() + 18), 3.0, 3.0);
 
         QFont tag = font();
-        tag.setPixelSize(9);
+        tag.setPixelSize(12);
         tag.setWeight(QFont::DemiBold);
         tag.setLetterSpacing(QFont::AbsoluteSpacing, 2.0);
         painter.setFont(tag);
@@ -214,7 +216,7 @@ void TimelineStrip::paintEvent(QPaintEvent*) {
                          Qt::AlignVCenter | Qt::AlignLeft, QString::fromUtf8(style.name));
 
         QFont titleFont = font();
-        titleFont.setPixelSize(14);
+        titleFont.setPixelSize(17);
         titleFont.setWeight(QFont::DemiBold);
         painter.setFont(titleFont);
         painter.setPen(theme::kInk);
@@ -224,7 +226,7 @@ void TimelineStrip::paintEvent(QPaintEvent*) {
                              m.title, Qt::ElideRight, static_cast<int>(card.width() - 32)));
 
         QFont detailFont = font();
-        detailFont.setPixelSize(11);
+        detailFont.setPixelSize(14);
         painter.setFont(detailFont);
         painter.setPen(theme::kDim);
         painter.drawText(QRectF(card.left() + 16, card.top() + 50, card.width() - 32, 18),
@@ -250,29 +252,88 @@ TimelineView::TimelineView(QWidget* parent) : QScrollArea(parent) {
     strip_ = new TimelineStrip;
     setWidget(strip_);
 
-    // Seeded so the timeline tells a story on first open: yesterday's meeting
-    // becoming a report, a proposal, feedback, and a final version -- the exact
-    // chain the product is built to make legible. Today fills in live.
-    strip_->setMemories({
-        {Memory::Kind::Report, QStringLiteral("09:02"), QStringLiteral("Morning digest"),
-         QStringLiteral("Three follow-ups from yesterday are waiting for you."),
-         QStringLiteral("Today")},
-        {Memory::Kind::File, QStringLiteral("17:20"), QStringLiteral("Final version"),
-         QStringLiteral("Exported the proposal and shared it with the team."),
-         QStringLiteral("Yesterday")},
-        {Memory::Kind::Action, QStringLiteral("16:40"), QStringLiteral("Client feedback"),
-         QStringLiteral("Two changes requested, both on the pricing section."),
-         QStringLiteral("Yesterday")},
-        {Memory::Kind::Note, QStringLiteral("14:05"), QStringLiteral("Edited proposal"),
-         QStringLiteral("Tightened the positioning and cut the third slide."),
-         QStringLiteral("Yesterday")},
-        {Memory::Kind::Report, QStringLiteral("10:30"), QStringLiteral("Generated summary"),
-         QStringLiteral("Auto-drafted from the kickoff transcript."),
-         QStringLiteral("Yesterday")},
-        {Memory::Kind::Meeting, QStringLiteral("09:15"), QStringLiteral("Client kickoff"),
-         QStringLiteral("Scope, timeline, and the three deliverables."),
-         QStringLiteral("Yesterday")},
-    });
+    // Shown until she has actually done something, instead of filling the page
+    // with invented history.
+    empty_ = new QLabel(
+        QStringLiteral("Nothing remembered yet.\n\n"
+                       "Everything you ask her lands here, oldest at the bottom."),
+        viewport());
+    empty_->setAlignment(Qt::AlignCenter);
+    empty_->setStyleSheet(QStringLiteral("color: %1; background: transparent;")
+                              .arg(theme::kFaint.name()));
+    empty_->setAttribute(Qt::WA_TransparentForMouseEvents);
+
+    reload();
+}
+
+// Everything she has actually done, newest first, straight out of the journal.
+//
+// This used to be six invented entries about a marketing proposal -- a client
+// kickoff, a pricing negotiation, an export -- seeded so the page "told a story
+// on first open". It told the same story on every machine, and none of it had
+// happened. The journal is the real source now.
+void TimelineView::reload() {
+    QVector<Memory> found;
+    const auto days = journal_.days();
+
+    // days() is ascending; walk back from today so the newest is at the top.
+    for (auto day = days.rbegin(); day != days.rend(); ++day) {
+        const QString label = dayLabel(QString::fromStdString(*day));
+        auto events = journal_.read_day(*day);
+        for (auto event = events.rbegin(); event != events.rend(); ++event) {
+            Memory memory;
+            memory.kind = kindFor(QString::fromStdString(event->kind));
+            memory.day = label;
+            // The journal stamps ISO-8601; the strip wants a clock time.
+            const QString when = QString::fromStdString(event->time);
+            memory.time = when.section('T', 1).left(5);
+
+            const auto text = [&event](const char* key) {
+                return event->record.contains(key) && event->record[key].is_string()
+                           ? QString::fromStdString(event->record[key]).trimmed()
+                           : QString();
+            };
+            memory.title = text("said");
+            memory.detail = text("replied");
+            if (memory.title.isEmpty()) memory.title = QString::fromStdString(event->kind);
+            found.push_back(memory);
+        }
+    }
+    strip_->setMemories(found);
+    empty_->setVisible(found.isEmpty());
+}
+
+// "Today" and "Yesterday" read better than a date; anything older keeps its.
+QString TimelineView::dayLabel(const QString& day) const {
+    const QDate date = QDate::fromString(day, QStringLiteral("yyyy-MM-dd"));
+    if (!date.isValid()) return day;
+    const qint64 ago = date.daysTo(QDate::currentDate());
+    if (ago == 0) return QStringLiteral("Today");
+    if (ago == 1) return QStringLiteral("Yesterday");
+    return date.toString(QStringLiteral("d MMMM"));
+}
+
+// The journal records an action name; the strip draws a handful of shapes.
+Memory::Kind TimelineView::kindFor(const QString& action) {
+    if (action == QStringLiteral("take_note")) return Memory::Kind::Note;
+    if (action == QStringLiteral("chat")) return Memory::Kind::Chat;
+    if (action.startsWith(QStringLiteral("open_file")) ||
+        action.startsWith(QStringLiteral("open_folder")) ||
+        action.startsWith(QStringLiteral("find_file"))) {
+        return Memory::Kind::File;
+    }
+    if (action.startsWith(QStringLiteral("read_notes")) ||
+        action.startsWith(QStringLiteral("system_info")) ||
+        action.startsWith(QStringLiteral("battery"))) {
+        return Memory::Kind::Report;
+    }
+    return Memory::Kind::Action;
+}
+
+void TimelineView::showEvent(QShowEvent* event) {
+    QScrollArea::showEvent(event);
+    if (empty_ != nullptr) empty_->resize(viewport()->size());
+    reload();
 }
 
 void TimelineView::remember(const QString& said, const QString& replied) {
@@ -283,6 +344,7 @@ void TimelineView::remember(const QString& said, const QString& replied) {
     memory.detail = replied.trimmed();
     memory.day = QStringLiteral("Today");
     strip_->prepend(memory);
+    if (empty_ != nullptr) empty_->setVisible(false);
     verticalScrollBar()->setValue(0);  // the newest memory, in view
 }
 

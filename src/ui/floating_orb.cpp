@@ -2,6 +2,10 @@
 
 #include "ui/theme.hpp"
 
+#ifdef Q_OS_MACOS
+#include "ui/mac_window.hpp"
+#endif
+
 #include <QAction>
 #include <QApplication>
 #include <QConicalGradient>
@@ -265,6 +269,23 @@ void FloatingOrb::moveToDefaultCorner() {
     if (screen == nullptr) return;
     const QRect area = screen->availableGeometry();
     move(area.right() - width() - kEdgeMargin, area.bottom() - height() - kEdgeMargin * 4);
+}
+
+void FloatingOrb::showEvent(QShowEvent* event) {
+    QWidget::showEvent(event);
+    // Re-applied on every show: Qt recreates the native panel when the window
+    // is hidden and shown again, and a fresh NSPanel is back to hiding itself
+    // when the application deactivates.
+    pinToAllSpaces();
+}
+
+void FloatingOrb::pinToAllSpaces() {
+#ifdef Q_OS_MACOS
+    if (QGuiApplication::platformName() == QLatin1String("offscreen")) return;
+    if (!isWindow()) return;
+    winId();  // force the native window to exist before touching it
+    pin_overlay_window(this);
+#endif
 }
 
 void FloatingOrb::mousePressEvent(QMouseEvent* event) {

@@ -23,5 +23,7 @@
        touches the microphone, rather than showing a permission prompt. -->
   <key>NSMicrophoneUsageDescription</key>
   <string>Mimi listens for "ねえミミ" so she can answer you. Audio is transcribed on this Mac and never leaves it.</string>
+  <key>NSContactsUsageDescription</key>
+  <string>Mimi looks up a phone number when you ask her to call someone by name. Contacts are read on this Mac and never leave it.</string>
 </dict>
 </plist>

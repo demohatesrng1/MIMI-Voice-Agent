@@ -37,6 +37,9 @@ public:
     void setState(int state);
     void setLevel(float rms);
     void moveToDefaultCorner();
+    // Keeps the orb on screen across app switches and Spaces. Safe to call
+    // repeatedly, and a no-op off macOS.
+    void pinToAllSpaces();
 
     qreal phase() const noexcept { return phase_; }
     void setPhase(qreal phase);
@@ -51,6 +54,7 @@ Q_SIGNALS:
 
 protected:
     void paintEvent(QPaintEvent* event) override;
+    void showEvent(QShowEvent* event) override;
     void mousePressEvent(QMouseEvent* event) override;
     void mouseMoveEvent(QMouseEvent* event) override;
     void mouseReleaseEvent(QMouseEvent* event) override;

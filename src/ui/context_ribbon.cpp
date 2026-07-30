@@ -8,7 +8,7 @@
 namespace mimi::ui {
 namespace {
 
-constexpr int kHeight = 38;
+constexpr int kHeight = 24;
 constexpr int kPadX = 24;
 
 }  // namespace
@@ -16,13 +16,11 @@ constexpr int kPadX = 24;
 ContextRibbon::ContextRibbon(QWidget* parent) : QWidget(parent) {
     setAttribute(Qt::WA_TranslucentBackground);
     setFixedHeight(kHeight);
-    // Sensible defaults so the ribbon reads as populated from the first frame;
-    // these get replaced as the app learns the real context.
-    task_ = QStringLiteral("Marketing proposal");
-    metrics_ = {{QStringLiteral("FILES"), QStringLiteral("12")},
-                {QStringLiteral("RELATED MAIL"), QStringLiteral("8")},
-                {QStringLiteral("PEOPLE"), QStringLiteral("4")},
-                {QStringLiteral("MEMORY"), QStringLiteral("High")}};
+    // No placeholder content. This used to open on an invented task
+    // ("Marketing proposal") with invented counts beside it, which nothing ever
+    // replaced -- the ribbon stated four facts about your work that were false
+    // on every machine it ran on. It now stays blank until MainWindow feeds it
+    // something true.
 }
 
 QSize ContextRibbon::sizeHint() const { return {600, kHeight}; }
@@ -56,27 +54,31 @@ void ContextRibbon::paintEvent(QPaintEvent*) {
 
     // No band -- just a hairline at the foot, so it belongs to the one surface
     // rather than stacking a toolbar on top of it.
-    painter.setPen(QPen(QColor(255, 255, 255, 14), 1.0));
-    painter.drawLine(kPadX, height() - 1, width() - kPadX, height() - 1);
+    painter.setPen(QPen(QColor(255, 255, 255, 16), 1.0));
+    painter.drawLine(0, 0, width(), 0);
 
     QFont caps = font();
-    caps.setPixelSize(9);
+    caps.setPixelSize(12);
     caps.setWeight(QFont::DemiBold);
     caps.setLetterSpacing(QFont::AbsoluteSpacing, 2.0);
     QFont value = font();
-    value.setPixelSize(13);
+    value.setPixelSize(14);
     value.setWeight(QFont::DemiBold);
 
-    // Left: the current task.
-    painter.setFont(caps);
-    painter.setPen(theme::kFaint);
-    const int tagW = QFontMetrics(caps).horizontalAdvance(QStringLiteral("CURRENT TASK")) + 10;
-    painter.drawText(QRect(kPadX, 0, tagW, height()), Qt::AlignVCenter | Qt::AlignLeft,
-                     QStringLiteral("CURRENT TASK"));
-    painter.setFont(value);
-    painter.setPen(theme::kInk);
-    painter.drawText(QRect(kPadX + tagW, 0, width() / 2, height()),
-                     Qt::AlignVCenter | Qt::AlignLeft, task_);
+    // Left: what she is looking at. Blank until something real is set, rather
+    // than a placeholder that reads as fact.
+    if (!task_.isEmpty()) {
+        painter.setFont(caps);
+        painter.setPen(theme::kFaint);
+        const int tagW =
+            QFontMetrics(caps).horizontalAdvance(QStringLiteral("IN FRONT")) + 10;
+        painter.drawText(QRect(kPadX, 0, tagW, height()), Qt::AlignVCenter | Qt::AlignLeft,
+                         QStringLiteral("IN FRONT"));
+        painter.setFont(value);
+        painter.setPen(theme::kInk);
+        painter.drawText(QRect(kPadX + tagW, 0, width() / 2, height()),
+                         Qt::AlignVCenter | Qt::AlignLeft, task_);
+    }
 
     // Simple mode stops here -- just the task, nothing to read on the right.
     if (compact_) return;

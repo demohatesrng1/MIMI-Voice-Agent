@@ -24,17 +24,22 @@ struct Command {
     const char* utterance;
 };
 
-constexpr std::array<Command, 10> kCommands{{
+// navPage must track the Page enum in main_window.cpp. These pointed at Canvas
+// and Missions, which no longer exist -- "Open Settings" navigated to a page
+// index that had shifted under it.
+constexpr std::array<Command, 12> kCommands{{
+    {"Take a note", "Action", -1, "メモして"},
     {"Take a screenshot", "Action", -1, "スクリーンショットを撮って"},
     {"Lock the screen", "Action", -1, "画面をロックして"},
+    {"What's on screen?", "Ask", -1, "画面に何がある"},
+    {"Read my notes", "Ask", -1, "メモを読んで"},
     {"Battery status", "Ask", -1, "バッテリーはどのくらい"},
     {"What time is it?", "Ask", -1, "今何時ですか"},
-    {"Summarize the meeting", "Ask", -1, "会議の内容を要約して"},
+    {"System status", "Ask", -1, "システムの状態は"},
     {"Go Home", "Navigate", 0, ""},
-    {"Open Canvas", "Navigate", 1, ""},
+    {"Open Notes", "Navigate", 1, ""},
     {"Open Memory timeline", "Navigate", 2, ""},
-    {"Open Missions", "Navigate", 3, ""},
-    {"Open Settings", "Navigate", 4, ""},
+    {"Open Settings", "Navigate", 3, ""},
 }};
 
 constexpr int kRoleIndex = Qt::UserRole;  // stores the command index on each row

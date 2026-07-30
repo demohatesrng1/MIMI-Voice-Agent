@@ -95,14 +95,21 @@ WorkspaceDock::WorkspaceDock(QWidget* parent) : QWidget(parent) {
     column->addWidget(tools_);
 
     // The whole tool strip fades as a unit when the context changes.
+    //
+    // The effect is left disabled while it is not animating. A permanently
+    // installed QGraphicsOpacityEffect re-routes the strip through an offscreen
+    // pixmap, and its child chips then fail to appear at all under
+    // QWidget::grab() -- the row rendered as an empty gap below its heading.
     fade_ = new QGraphicsOpacityEffect(tools_);
     fade_->setOpacity(1.0);
+    fade_->setEnabled(false);
     tools_->setGraphicsEffect(fade_);
 
     anim_ = new QPropertyAnimation(fade_, "opacity", this);
     anim_->setEasingCurve(QEasingCurve::OutCubic);
     connect(anim_, &QPropertyAnimation::finished, this, [this] {
         // Handed over at the trough of the fade: swap the set, then rise again.
+        if (fade_->opacity() >= 0.999) fade_->setEnabled(false);
         if (fade_->opacity() < 0.5 && context_ != pending_) {
             context_ = pending_;
             rebuild(context_);
@@ -139,6 +146,7 @@ void WorkspaceDock::rebuild(Context context) {
 
 void WorkspaceDock::crossfadeTo(Context context) {
     pending_ = context;
+    fade_->setEnabled(true);  // only while it is actually fading
     anim_->stop();
     anim_->setStartValue(fade_->opacity());
     anim_->setEndValue(0.0);

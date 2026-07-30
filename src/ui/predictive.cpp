@@ -123,12 +123,16 @@ struct Prediction {
     const char* utterance;
 };
 
-// Seeded guesses. Refined later from real signals -- recent work, time of day,
-// the timeline -- but the surface and the interaction are what matter now.
+// Things she can actually do, phrased the way you would say them.
+//
+// These were three invented office tasks ("Continue yesterday's report") that
+// routed to nothing -- a chip that does not work is worse than no chip, because
+// it teaches you not to trust the surface. Every entry here runs a real path
+// through the router.
 constexpr std::array<Prediction, 3> kPredictions{{
-    {"Continue yesterday's report", "昨日のレポートの続きを手伝って"},
-    {"Summarize this week", "今週の予定を要約して"},
-    {"Schedule a follow-up", "フォローアップの予定を入れて"},
+    {"Take a note", "メモして"},
+    {"Read my notes", "メモを読んで"},
+    {"What's on screen?", "画面に何がある"},
 }};
 
 }  // namespace

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "brain/journal.hpp"
+#include "brain/notes.hpp"
 #include "brain/ollama.hpp"
 #include "brain/tools.hpp"
 
@@ -7,6 +9,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace mimi::brain {
 
@@ -54,10 +57,19 @@ public:
 private:
     Reply rules(const std::string& utterance, const std::string& lower);
     Reply classify_then_route(const std::string& utterance);
+    // One classified step. Empty `action` in the result means it did nothing.
+    Reply execute_step(const std::string& action, const std::string& argument);
     Reply converse(const std::string& utterance);
+    // Reads notes back aloud; `when_empty` is spoken when there are none.
+    Reply speak_notes(const std::vector<Note>& notes, const std::string& when_empty);
+    // Answers a question about what is in the notes, by giving the model the
+    // notes themselves. `question` empty means "summarise them".
+    Reply think_about_notes(const std::string& question);
     void remember(const std::string& user, const std::string& assistant);
 
     Ollama& ollama_;
+    Notes notes_;
+    Journal journal_;
     Config config_;
     std::deque<Message> history_;
     ReminderHandler on_reminder_;

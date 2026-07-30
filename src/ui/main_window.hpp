@@ -21,17 +21,14 @@ class QTimer;
 
 namespace mimi::ui {
 
-class AiDock;
 class AmbientCanvas;
-class CanvasView;
 class CommandBar;
 class CommandPalette;
 class ContextRibbon;
 class GhostButton;
-class MissionControl;
-class ModeToggle;
 class NeuralSearch;
-class RelationshipGraph;
+class SettingsView;
+class NotesView;
 class TimelineView;
 
 class MainWindow : public QMainWindow {
@@ -64,6 +61,7 @@ private Q_SLOTS:
 private:
     QWidget* buildTitleBar();
     void navigate(int page);
+    void refreshContext();
     void setMuted(bool muted);
     void ask(const QString& utterance);
     void deliver(const QString& reply, const QString& action, bool acted);
@@ -78,35 +76,27 @@ private:
     // Position the floating overlays against the current window size.
     void layoutOverlays();
     // Route a tap on the AI dock to the faculty it stands for.
-    void onDockItem(int item);
     // Adaptive UI: show the power surfaces in Expert, hide them in Simple.
-    void applyUiMode(bool expert);
 
     QStackedWidget* pages_ = nullptr;
     AmbientCanvas* ambient_ = nullptr;
     ContextRibbon* ribbon_ = nullptr;
     HomeView* home_ = nullptr;
-    CanvasView* canvas_ = nullptr;
     TimelineView* timeline_ = nullptr;
-    MissionControl* missions_ = nullptr;
-    RelationshipGraph* graph_ = nullptr;
-    GhostButton* navGraph_ = nullptr;
-    QWidget* settings_ = nullptr;
+    NotesView* notes_ = nullptr;
+    SettingsView* settings_ = nullptr;
     AmbientAudio audio_;
 
     QLabel* statusDot_ = nullptr;
     QLabel* statusText_ = nullptr;
     GhostButton* navHome_ = nullptr;
-    GhostButton* navCanvas_ = nullptr;
     GhostButton* navTimeline_ = nullptr;
-    GhostButton* navMissions_ = nullptr;
-    ModeToggle* mode_ = nullptr;
-    GhostButton* talkBtn_ = nullptr;
+    GhostButton* navNotes_ = nullptr;
+    QPushButton* stopBtn_ = nullptr;
     QPushButton* mutePill_ = nullptr;
     GhostButton* settingsBtn_ = nullptr;
     CommandBar* composer_ = nullptr;
 
-    AiDock* aiDock_ = nullptr;
     CommandPalette* palette_ = nullptr;
     NeuralSearch* search_ = nullptr;
 
@@ -117,6 +107,7 @@ private:
     // after a transient overlay like Remembering.
     voice::State voiceState_ = voice::State::Idle;
     QTimer* rememberTimer_ = nullptr;
+    QTimer* contextTimer_ = nullptr;
     bool remembering_ = false;
     std::unique_ptr<audio::Capture> capture_;
     std::unique_ptr<voice::Listener> listener_;

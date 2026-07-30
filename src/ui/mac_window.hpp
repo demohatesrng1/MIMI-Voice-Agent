@@ -30,6 +30,18 @@ void add_window_vibrancy(QWidget* widget);
 // how title bars end up with buttons sitting on top of a label.
 int traffic_light_inset(QWidget* widget);
 
+// Keeps a borderless overlay (the orb) visible no matter which application is
+// in front.
+//
+// Qt::Tool maps to an NSPanel that AppKit hides whenever the application
+// deactivates, which is why the orb vanishes on a Cmd-Tab. Making the panel
+// non-activating and stationary, giving it a floating window level and joining
+// it to every Space is what pins it: it then survives app switches, Space
+// changes and Mission Control without ever taking focus.
+//
+// Call after the widget has a native handle, i.e. after winId() or show().
+void pin_overlay_window(QWidget* widget);
+
 // Runs the system double-click-on-titlebar action (zoom or minimise,
 // following the user's Desk & Dock preference) on the widget's window.
 void titlebar_double_clicked(QWidget* widget);

@@ -52,7 +52,7 @@ void GhostButton::setGlyph(icons::Glyph glyph) {
     update();
 }
 
-QSize GhostButton::sizeHint() const { return {34, 34}; }
+QSize GhostButton::sizeHint() const { return {40, 40}; }
 
 void GhostButton::enterEvent(QEnterEvent*) { animateTo(1.0); }
 void GhostButton::leaveEvent(QEvent*) { animateTo(0.0); }
@@ -62,19 +62,33 @@ void GhostButton::paintEvent(QPaintEvent*) {
     QPainter painter(this);
     painter.setRenderHint(QPainter::Antialiasing);
 
+    // Selection is carried by the icon and a short rule beneath it, not by a
+    // tinted capsule behind it. A filled pill per button turns a row of five
+    // into five competing shapes; an editor's activity bar stays quiet and
+    // marks exactly one thing.
     const bool on = isChecked();
-    if (on || hover_ > 0.01) {
+    if (hover_ > 0.01) {
         painter.setPen(Qt::NoPen);
-        QColor fill = on ? theme::kAccent : QColor(255, 255, 255);
-        fill.setAlphaF(on ? 0.14 : 0.07 * hover_);
+        QColor fill(255, 255, 255);
+        fill.setAlphaF(0.055 * hover_);
         painter.setBrush(fill);
-        painter.drawRoundedRect(rect(), 9, 9);
+        painter.drawRoundedRect(rect(), 5, 5);
     }
 
-    QColor tint = on ? theme::kAccentSoft : mix(theme::kDim, theme::kInk, hover_);
+    QColor tint = on ? theme::kInk : mix(theme::kFaint, theme::kDim, hover_);
     if (!isEnabled()) tint = theme::kFaint;
-    icons::icon(glyph_, tint, 20).paint(&painter,
-                                        QRect((width() - 20) / 2, (height() - 20) / 2, 20, 20));
+    constexpr int kGlyph = 21;
+    icons::icon(glyph_, tint, kGlyph)
+        .paint(&painter,
+               QRect((width() - kGlyph) / 2, (height() - kGlyph) / 2 - 1, kGlyph, kGlyph));
+
+    if (on) {
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(theme::kAccent);
+        const int w = 16;
+        painter.drawRoundedRect(QRectF((width() - w) / 2.0, height() - 3.0, w, 1.5), 0.75,
+                                0.75);
+    }
 }
 
 // -------------------------------------------------------- ConfidenceMeter
@@ -115,7 +129,7 @@ void ConfidenceMeter::paintEvent(QPaintEvent*) {
     painter.setRenderHint(QPainter::Antialiasing);
 
     QFont caps = font();
-    caps.setPixelSize(10);
+    caps.setPixelSize(13);
     caps.setWeight(QFont::DemiBold);
     caps.setLetterSpacing(QFont::AbsoluteSpacing, 2.0);
     painter.setFont(caps);
@@ -148,7 +162,7 @@ void ConfidenceMeter::paintEvent(QPaintEvent*) {
     painter.drawEllipse(QPointF(fill.right(), track.center().y()), 2.6, 2.6);
 
     QFont num = font();
-    num.setPixelSize(12);
+    num.setPixelSize(15);
     num.setWeight(QFont::DemiBold);
     painter.setFont(num);
     painter.setPen(theme::kDim);
@@ -216,7 +230,7 @@ void ModeToggle::paintEvent(QPaintEvent*) {
     painter.drawRoundedRect(pill, r - 2, r - 2);
 
     QFont f = font();
-    f.setPixelSize(11);
+    f.setPixelSize(14);
     f.setWeight(QFont::DemiBold);
     painter.setFont(f);
 
@@ -233,14 +247,14 @@ void ModeToggle::paintEvent(QPaintEvent*) {
 Chip::Chip(const QString& text, QWidget* parent) : QAbstractButton(parent) {
     setText(text);
     setCursor(Qt::PointingHandCursor);
-    setFixedHeight(38);
+    setFixedHeight(42);
     anim_ = hoverAnimation(this, &hover_, this);
 }
 
 QSize Chip::sizeHint() const {
     QFont font = this->font();
-    font.setPixelSize(13);
-    return {QFontMetrics(font).horizontalAdvance(text()) + 44, 38};
+    font.setPixelSize(18);
+    return {QFontMetrics(font).horizontalAdvance(text()) + 48, 42};
 }
 
 void Chip::enterEvent(QEnterEvent*) { animateTo(1.0); }
@@ -263,7 +277,7 @@ void Chip::paintEvent(QPaintEvent*) {
     painter.drawRoundedRect(body, 19, 19);
 
     QFont font = painter.font();
-    font.setPixelSize(13);
+    font.setPixelSize(16);
     painter.setFont(font);
     painter.setPen(mix(theme::kDim, theme::kInk, hover_));
     painter.drawText(body, Qt::AlignCenter, text());

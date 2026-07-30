@@ -2,6 +2,7 @@
 //
 //   mimi_tools              read-only probes (safe, changes nothing)
 //   mimi_tools --url NAME   what URL a spoken site name resolves to
+//   mimi_tools --app NAME   which installed app a spoken name resolves to
 //   mimi_tools --search Q   DuckDuckGo results
 //   mimi_tools --remind S   what the reminder parser sees
 
@@ -9,7 +10,9 @@
 #include "core/log.hpp"
 
 #include <cstdio>
+#include <chrono>
 #include <string>
+#include <thread>
 
 using namespace mimi::brain;
 
@@ -18,6 +21,39 @@ int main(int argc, char** argv) {
 
     if (argc > 2 && std::string(argv[1]) == "--url") {
         std::printf("%s -> %s\n", argv[2], tools::url_for_site(argv[2]).c_str());
+        return 0;
+    }
+    // Resolution only: this never launches anything, so it is safe to sweep.
+    if (argc > 2 && std::string(argv[1]) == "--app") {
+        for (int i = 2; i < argc; ++i) {
+            const std::string app = tools::resolve_app_name(argv[i]);
+            std::printf("  %-28s -> %s\n", argv[i], app.empty() ? "(no match)" : app.c_str());
+        }
+        return 0;
+    }
+    // Resolution only, nothing is opened.
+    if (argc > 2 && std::string(argv[1]) == "--folder") {
+        for (int i = 2; i < argc; ++i) {
+            const std::string path = tools::folder_for_name(argv[i]);
+            std::printf("  %-30s -> %s\n", argv[i], path.empty() ? "(no match)" : path.c_str());
+        }
+        return 0;
+    }
+    if (argc > 2 && std::string(argv[1]) == "--contact") {
+        for (int i = 2; i < argc; ++i) {
+            const std::string number = tools::phone_for_contact(argv[i]);
+            std::printf("  %-30s -> %s\n", argv[i], number.empty() ? "(not found)" : number.c_str());
+        }
+        return 0;
+    }
+    // Re-arms what is on disk and reports what fired, so persistence across a
+    // restart can be checked without restarting the app.
+    if (argc > 1 && std::string(argv[1]) == "--reminders") {
+        const int restored = tools::restore_reminders([](const std::string& text) {
+            std::printf("  fired: %s\n", text.c_str());
+        });
+        std::printf("  restored %d reminder(s)\n", restored);
+        std::this_thread::sleep_for(std::chrono::milliseconds(300));
         return 0;
     }
     if (argc > 2 && std::string(argv[1]) == "--search") {

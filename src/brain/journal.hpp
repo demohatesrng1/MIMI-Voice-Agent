@@ -33,6 +33,14 @@ public:
     // ends to a single day is the fix.
     bool clear_day(const std::string& day = {});
 
+    // Deletes journal days older than `keep_days`. Returns how many files went.
+    //
+    // Everything Mimi hears is written here, so "it never leaves the machine"
+    // is only half a privacy answer -- the other half is that it does not sit
+    // on the machine forever either. Without this the log grows without limit
+    // and every day of it stays readable indefinitely.
+    int prune(int keep_days = 90);
+
     static std::string today();
 };
 
