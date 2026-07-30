@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <cstdint>
+#include <filesystem>
 #include <memory>
 #include <string>
 #include <vector>
@@ -9,27 +10,33 @@
 namespace mimi::voice {
 
 struct VoicevoxStyle {
-    std::string speaker;  // character, e.g. 四国めたん
-    std::string style;    // delivery, e.g. ノーマル / あまあま
-    int id = 0;           // what /synthesis wants
+    std::string speaker;  // character, e.g. 冥鳴ひまり
+    std::string style;    // delivery, e.g. ノーマル
+    int id = 0;           // style id passed to synthesis
 };
 
-// Client for a local VOICEVOX engine.
+// Offline Japanese TTS through the embedded VOICEVOX CORE library.
 //
-// The system voices on this Mac are all compact or Eloquence quality, which is
-// why Mimi sounded synthetic: those are formant synthesisers with a hard
-// ceiling, not something tuning can rescue. VOICEVOX is neural, free, runs
-// entirely locally on :50021, and is built specifically for Japanese character
-// voices -- much closer to a person, and a better fit for ミミ than any
-// general-purpose TTS.
+// This does NOT talk to the VOICEVOX.app HTTP engine on :50021 -- it links
+// libvoicevox_core directly and runs the neural synthesiser in-process, so Mimi
+// keeps her voice even when the VOICEVOX app is closed (or not installed). The
+// runtime files (the core dylib, VOICEVOX's ONNX Runtime build, the Open JTalk
+// dictionary and the .vvm voice models) are fetched by scripts/fetch_voicevox.sh
+// and discovered at runtime; see find_root().
 //
-// Everything here degrades quietly: if the engine is not installed or not
-// running, available() is false and the caller falls back to AVSpeech.
+// The default character is 冥鳴ひまり (Meimei Himari), style ノーマル / id 14,
+// which lives in models/vvms/1.vvm.
+//
+// Everything here degrades quietly: if the runtime files are missing or the
+// library was not compiled in, available() is false and the caller falls back
+// to AVSpeech / Kyoko.
 class Voicevox {
 public:
     struct Config {
-        std::string host = "http://localhost:50021";
-        int style_id = 2;  // 四国めたん / ノーマル -- a calm, clear default
+        // Root of the fetched voicevox_core/ tree. Empty = auto-discover.
+        std::filesystem::path root;
+        std::string model_file = "1.vvm";  // the .vvm holding the default voice
+        int style_id = 14;                 // 冥鳴ひまり / ノーマル
         double speed = 1.0;
         double pitch = 0.0;         // -0.15 .. 0.15
         double intonation = 1.15;   // >1 gives livelier, less flat delivery
@@ -39,14 +46,17 @@ public:
     explicit Voicevox(Config config);
     ~Voicevox();
 
-    // Is an engine answering right now?
+    // True once the engine has been initialised and can synthesise now.
     bool available() const;
 
-    // Launches VOICEVOX.app if it is installed but not running, then waits for
-    // the engine to answer. False if it is not installed at all.
+    // Loads the ONNX Runtime, dictionary, synthesiser and voice model. Slow the
+    // first time (the model is read from disk), so the caller runs it off the
+    // construction path. Idempotent; returns available(). The `wait` argument is
+    // accepted for interface compatibility and otherwise unused -- there is no
+    // external process to wait on.
     bool ensure_running(std::chrono::seconds wait = std::chrono::seconds{40});
 
-    // Every character and style the engine offers.
+    // Every style the loaded model offers.
     std::vector<VoicevoxStyle> styles() const;
 
     // Japanese text -> 24 kHz mono WAV bytes. Empty on any failure, so callers
@@ -56,7 +66,7 @@ public:
     const Config& config() const noexcept { return config_; }
     void set_style(int id) { config_.style_id = id; }
 
-    // Where the app would be, for the "please install it" message.
+    // Where the runtime tree was found (or would be looked for), for messages.
     static std::string install_hint();
 
 private:

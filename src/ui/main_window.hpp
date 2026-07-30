@@ -3,8 +3,10 @@
 #include "audio/capture.hpp"
 #include "brain/ollama.hpp"
 #include "brain/router.hpp"
+#include "ui/ambient_audio.hpp"
 #include "ui/floating_orb.hpp"
 #include "ui/home_view.hpp"
+#include "ui/presence.hpp"
 #include "ui/voice_bridge.hpp"
 #include "voice/listener.hpp"
 #include "voice/tts.hpp"
@@ -15,11 +17,22 @@
 class QLabel;
 class QPushButton;
 class QStackedWidget;
+class QTimer;
 
 namespace mimi::ui {
 
+class AiDock;
+class AmbientCanvas;
+class CanvasView;
 class CommandBar;
+class CommandPalette;
+class ContextRibbon;
 class GhostButton;
+class MissionControl;
+class ModeToggle;
+class NeuralSearch;
+class RelationshipGraph;
+class TimelineView;
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -38,6 +51,9 @@ protected:
     // Re-applies the native chrome, since Qt can rebuild or restyle the
     // NSWindow across hide/show and full-screen transitions.
     void showEvent(QShowEvent* event) override;
+    // Keeps the floating overlays (AI dock, command palette) placed as the
+    // window resizes; they are not in the layout.
+    void resizeEvent(QResizeEvent* event) override;
 
 private Q_SLOTS:
     void onState(int state);
@@ -53,20 +69,55 @@ private:
     void deliver(const QString& reply, const QString& action, bool acted);
     void say(const QString& text);
     void note(const QString& message);
+    // Drive every surface -- orb, hero, status capsule, living background --
+    // from one presence, so nothing on screen ever disagrees about her state.
+    void applyPresence(Presence presence);
+    // The beat after an answer where she files it away. Held briefly, then the
+    // real voice state takes over again.
+    void flashRemembering();
+    // Position the floating overlays against the current window size.
+    void layoutOverlays();
+    // Route a tap on the AI dock to the faculty it stands for.
+    void onDockItem(int item);
+    // Adaptive UI: show the power surfaces in Expert, hide them in Simple.
+    void applyUiMode(bool expert);
 
     QStackedWidget* pages_ = nullptr;
+    AmbientCanvas* ambient_ = nullptr;
+    ContextRibbon* ribbon_ = nullptr;
     HomeView* home_ = nullptr;
+    CanvasView* canvas_ = nullptr;
+    TimelineView* timeline_ = nullptr;
+    MissionControl* missions_ = nullptr;
+    RelationshipGraph* graph_ = nullptr;
+    GhostButton* navGraph_ = nullptr;
     QWidget* settings_ = nullptr;
+    AmbientAudio audio_;
 
     QLabel* statusDot_ = nullptr;
     QLabel* statusText_ = nullptr;
+    GhostButton* navHome_ = nullptr;
+    GhostButton* navCanvas_ = nullptr;
+    GhostButton* navTimeline_ = nullptr;
+    GhostButton* navMissions_ = nullptr;
+    ModeToggle* mode_ = nullptr;
     GhostButton* talkBtn_ = nullptr;
     QPushButton* mutePill_ = nullptr;
     GhostButton* settingsBtn_ = nullptr;
     CommandBar* composer_ = nullptr;
 
+    AiDock* aiDock_ = nullptr;
+    CommandPalette* palette_ = nullptr;
+    NeuralSearch* search_ = nullptr;
+
     FloatingOrb* puck_ = nullptr;
     VoiceBridge* bridge_ = nullptr;
+
+    // The last state the voice engine reported, so presence can be restored
+    // after a transient overlay like Remembering.
+    voice::State voiceState_ = voice::State::Idle;
+    QTimer* rememberTimer_ = nullptr;
+    bool remembering_ = false;
     std::unique_ptr<audio::Capture> capture_;
     std::unique_ptr<voice::Listener> listener_;
     std::unique_ptr<voice::Speaker> speaker_;

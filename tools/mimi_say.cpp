@@ -41,9 +41,21 @@ int main(int argc, char** argv) {
         return 0;
     }
 
+    const bool want_voicevox = voice.empty();  // a named voice means the system one
     mimi::voice::Speaker::Config config;
-    if (!voice.empty()) config.voice_name = voice;
+    if (!want_voicevox) {
+        config.voice_name = voice;
+        config.prefer_voicevox = false;
+    }
     mimi::voice::Speaker speaker(std::move(config));
+
+    // VOICEVOX CORE initialises lazily (loading the model takes a moment), so
+    // bring it up before speaking -- otherwise this falls back to the system voice.
+    if (want_voicevox && speaker.start_voicevox()) {
+        std::printf("voice: VOICEVOX CORE (冥鳴ひまり)\n");
+    } else {
+        std::printf("voice: system (%s)\n", speaker.config().voice_name.c_str());
+    }
 
     bool done = false;
     speaker.speak(text, [&](bool) { done = true; });

@@ -4,6 +4,7 @@
 
 #include <QBitmap>
 #include <QConicalGradient>
+#include <QCursor>
 #include <QPainter>
 #include <QPainterPath>
 #include <QPropertyAnimation>
@@ -44,6 +45,7 @@ VoiceOrb::VoiceOrb(QWidget* parent) : QWidget(parent), levels_(kSpokes, 0.0) {
 
 void VoiceOrb::setPhase(qreal phase) {
     phase_ = phase;
+    trackGaze();  // the pulse animation is our ~60 fps heartbeat
     update();
 }
 
@@ -52,19 +54,31 @@ void VoiceOrb::setSpin(qreal spin) {
     update();
 }
 
-void VoiceOrb::setState(int state) {
-    const auto next = static_cast<voice::State>(state);
-    if (next == state_) return;
-    state_ = next;
+void VoiceOrb::trackGaze() {
+    if (!isVisible()) return;
+    const QPoint here = QCursor::pos();
+    const QPoint centre = mapToGlobal(rect().center());
+    // Normalised by a comfortable reach: past it she is already looking as far
+    // as she will, so the cursor racing to the corner does not yank her.
+    constexpr qreal reach = 280.0;
+    const QPointF target(std::clamp((here.x() - centre.x()) / reach, -1.0, 1.0),
+                         std::clamp((here.y() - centre.y()) / reach, -1.0, 1.0));
+    gaze_ += (target - gaze_) * 0.10;  // slow enough to read as attention
+}
 
-    switch (state_) {
-        case voice::State::Idle:      pulse_->setDuration(3200); spin_->setDuration(6000);  break;
-        case voice::State::Listening: pulse_->setDuration(1500); spin_->setDuration(3200);  break;
-        case voice::State::Thinking:  pulse_->setDuration(850);  spin_->setDuration(1100);  break;
-        case voice::State::Speaking:  pulse_->setDuration(1800); spin_->setDuration(4000);  break;
-        case voice::State::Paused:    pulse_->setDuration(6000); spin_->setDuration(20000); break;
+void VoiceOrb::setPresence(Presence presence) {
+    if (presence == presence_) return;
+    presence_ = presence;
+
+    switch (presence_) {
+        case Presence::Observing:   pulse_->setDuration(3200); spin_->setDuration(6000);  break;
+        case Presence::Listening:   pulse_->setDuration(1500); spin_->setDuration(3200);  break;
+        case Presence::Thinking:    pulse_->setDuration(850);  spin_->setDuration(1100);  break;
+        case Presence::Speaking:    pulse_->setDuration(1800); spin_->setDuration(4000);  break;
+        case Presence::Remembering: pulse_->setDuration(2200); spin_->setDuration(5200);  break;
+        case Presence::Muted:       pulse_->setDuration(6000); spin_->setDuration(20000); break;
     }
-    if (state_ == voice::State::Paused) {
+    if (presence_ == Presence::Muted) {
         level_ = 0.0;
         std::fill(levels_.begin(), levels_.end(), 0.0);
     }
@@ -115,17 +129,11 @@ const QPixmap& VoiceOrb::portrait(int diameter) const {
 }
 
 QColor VoiceOrb::accent() const {
-    // One hue at four weights. Resting is deep and quiet, hearing you is the
+    // One hue at several weights. Resting is deep and quiet, hearing you is the
     // full accent, thinking is lighter, speaking goes almost white -- so the
-    // state is read from brightness without needing a legend.
-    switch (state_) {
-        case voice::State::Idle:      return theme::kAccentDeep;
-        case voice::State::Listening: return theme::kAccent;
-        case voice::State::Thinking:  return theme::kAccentSoft;
-        case voice::State::Speaking:  return theme::kInk;
-        case voice::State::Paused:    return theme::kFaint;
-    }
-    return theme::kAccentDeep;
+    // state is read from brightness without needing a legend. Shared with the
+    // rest of the UI through presence_accent().
+    return presence_accent(presence_);
 }
 
 void VoiceOrb::paintEvent(QPaintEvent*) {
@@ -181,7 +189,7 @@ void VoiceOrb::paintEvent(QPaintEvent*) {
     const qreal ring = span * 0.52;
     {
         QConicalGradient sweep(centre, -angle_);
-        if (state_ == voice::State::Paused) {
+        if (presence_ == Presence::Muted) {
             // Muted stays monochrome: the spectrum is a sign of life.
             QColor bright = colour.lighter(150);
             bright.setAlphaF(0.80);
@@ -222,7 +230,7 @@ void VoiceOrb::paintEvent(QPaintEvent*) {
     }
 
     // Thinking: a bright arc chasing the ring, so waiting reads as progress.
-    if (state_ == voice::State::Thinking) {
+    if (presence_ == Presence::Thinking) {
         QPen pen(theme::kInk, 2.8);
         pen.setCapStyle(Qt::RoundCap);
         painter.setPen(pen);
@@ -231,22 +239,35 @@ void VoiceOrb::paintEvent(QPaintEvent*) {
         painter.drawArc(box, static_cast<int>(-angle_ * 16), 70 * 16);
     }
 
+    // Remembering: a soft ring breathing in, the exchange being filed away.
+    if (presence_ == Presence::Remembering) {
+        QColor c = theme::kAccentGlow;
+        c.setAlphaF(0.14 + 0.24 * breath);
+        painter.setPen(QPen(c, 1.6));
+        painter.setBrush(Qt::NoBrush);
+        const qreal rr = ring * (1.14 - 0.12 * breath);  // contracting, inward
+        painter.drawEllipse(centre, rr, rr);
+    }
+
     // --- core: the character herself ----------------------------------------
+    // She drifts a couple of pixels toward the cursor -- eye contact, held.
     const qreal core = span * 0.44 * (1.0 + 0.04 * breath + 0.06 * level_);
+    const QPointF gaze(gaze_.x() * core * 0.16, gaze_.y() * core * 0.16);
+    const QPointF eyes = centre + gaze;
     const int diameter = static_cast<int>(core * 2);
     const QPixmap& face = portrait(diameter);
 
     if (!face.isNull()) {
         // Untinted: she reads as artwork, and the ring carries the state.
-        painter.drawPixmap(QPointF(centre.x() - core, centre.y() - core), face);
+        painter.drawPixmap(QPointF(eyes.x() - core, eyes.y() - core), face);
     } else {
-        QRadialGradient fill(QPointF(centre.x() - core * 0.25, centre.y() - core * 0.35),
+        QRadialGradient fill(QPointF(eyes.x() - core * 0.25, eyes.y() - core * 0.35),
                              core * 1.9);
         fill.setColorAt(0.0, colour.lighter(165));
         fill.setColorAt(1.0, theme::kVoid);
         painter.setPen(Qt::NoPen);
         painter.setBrush(fill);
-        painter.drawEllipse(centre, core, core);
+        painter.drawEllipse(eyes, core, core);
     }
 
     // Rim light, so she sits inside the rings rather than on top of them.
@@ -254,7 +275,7 @@ void VoiceOrb::paintEvent(QPaintEvent*) {
     rim.setAlphaF(0.55);
     painter.setPen(QPen(rim, 1.6));
     painter.setBrush(Qt::NoBrush);
-    painter.drawEllipse(centre, core, core);
+    painter.drawEllipse(eyes, core, core);
 }
 
 }  // namespace mimi::ui

@@ -2,8 +2,11 @@
 
 #include "ui/theme.hpp"
 
+#include <QMouseEvent>
 #include <QPainter>
 #include <QVariantAnimation>
+
+#include <algorithm>
 
 namespace mimi::ui {
 namespace {
@@ -72,6 +75,157 @@ void GhostButton::paintEvent(QPaintEvent*) {
     if (!isEnabled()) tint = theme::kFaint;
     icons::icon(glyph_, tint, 20).paint(&painter,
                                         QRect((width() - 20) / 2, (height() - 20) / 2, 20, 20));
+}
+
+// -------------------------------------------------------- ConfidenceMeter
+
+ConfidenceMeter::ConfidenceMeter(QWidget* parent) : QWidget(parent) {
+    setAttribute(Qt::WA_TranslucentBackground);
+    // A slow, eased fill: the bar catching up to the figure is the tell that a
+    // judgement was made, not a value dumped on screen.
+    anim_ = new QVariantAnimation(this);
+    anim_->setDuration(620);
+    anim_->setEasingCurve(QEasingCurve::OutCubic);
+    connect(anim_, &QVariantAnimation::valueChanged, this, [this](const QVariant& v) {
+        shown_ = v.toReal();
+        update();
+    });
+}
+
+QSize ConfidenceMeter::sizeHint() const { return {470, 22}; }
+
+void ConfidenceMeter::setConfidence(qreal value) {
+    if (value < 0.0) {
+        active_ = false;
+        anim_->stop();
+        shown_ = 0.0;
+        update();
+        return;
+    }
+    active_ = true;
+    anim_->stop();
+    anim_->setStartValue(shown_);
+    anim_->setEndValue(std::clamp(value, 0.0, 1.0));
+    anim_->start();
+}
+
+void ConfidenceMeter::paintEvent(QPaintEvent*) {
+    if (!active_) return;
+    QPainter painter(this);
+    painter.setRenderHint(QPainter::Antialiasing);
+
+    QFont caps = font();
+    caps.setPixelSize(10);
+    caps.setWeight(QFont::DemiBold);
+    caps.setLetterSpacing(QFont::AbsoluteSpacing, 2.0);
+    painter.setFont(caps);
+    painter.setPen(theme::kFaint);
+    const int labelW = 88;
+    painter.drawText(QRect(0, 0, labelW, height()), Qt::AlignVCenter | Qt::AlignLeft,
+                     QStringLiteral("CONFIDENCE"));
+
+    // The track, then the accent fill over it, with a soft head where it stops.
+    // Right side carries the figure plus the receipt: how many sources, and
+    // whether the reasoning was verified.
+    const qreal pctW = 38;
+    const qreal detailW = 185;
+    const QRectF track(labelW, height() / 2.0 - 2.0,
+                       width() - labelW - pctW - detailW - 8, 4.0);
+    QColor bed = theme::kFaint;
+    bed.setAlphaF(0.28);
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(bed);
+    painter.drawRoundedRect(track, 2, 2);
+
+    QRectF fill = track;
+    fill.setWidth(track.width() * shown_);
+    painter.setBrush(theme::kAccent);
+    painter.drawRoundedRect(fill, 2, 2);
+
+    QColor glow = theme::kAccentGlow;
+    glow.setAlphaF(0.9);
+    painter.setBrush(glow);
+    painter.drawEllipse(QPointF(fill.right(), track.center().y()), 2.6, 2.6);
+
+    QFont num = font();
+    num.setPixelSize(12);
+    num.setWeight(QFont::DemiBold);
+    painter.setFont(num);
+    painter.setPen(theme::kDim);
+    painter.drawText(QRect(static_cast<int>(track.right()) + 8, 0, pctW, height()),
+                     Qt::AlignVCenter | Qt::AlignLeft,
+                     QStringLiteral("%1%").arg(qRound(shown_ * 100)));
+
+    painter.setFont(caps);
+    painter.setPen(theme::kFaint);
+    painter.drawText(QRect(width() - static_cast<int>(detailW), 0, static_cast<int>(detailW),
+                           height()),
+                     Qt::AlignVCenter | Qt::AlignRight,
+                     QStringLiteral("5 SOURCES · VERIFIED"));
+}
+
+// -------------------------------------------------------------- ModeToggle
+
+ModeToggle::ModeToggle(QWidget* parent) : QWidget(parent) {
+    setCursor(Qt::PointingHandCursor);
+    setFixedSize(sizeHint());
+    anim_ = new QVariantAnimation(this);
+    anim_->setDuration(theme::kMotionMs);
+    anim_->setEasingCurve(theme::kMotion);
+    connect(anim_, &QVariantAnimation::valueChanged, this, [this](const QVariant& v) {
+        pos_ = v.toReal();
+        update();
+    });
+}
+
+QSize ModeToggle::sizeHint() const { return {150, 28}; }
+
+void ModeToggle::setExpert(bool expert) {
+    if (expert == expert_) return;
+    expert_ = expert;
+    anim_->stop();
+    anim_->setStartValue(pos_);
+    anim_->setEndValue(expert_ ? 1.0 : 0.0);
+    anim_->start();
+    Q_EMIT toggled(expert_);
+}
+
+void ModeToggle::mouseReleaseEvent(QMouseEvent* event) {
+    setExpert(event->position().x() >= width() / 2.0);
+}
+
+void ModeToggle::paintEvent(QPaintEvent*) {
+    QPainter painter(this);
+    painter.setRenderHint(QPainter::Antialiasing);
+
+    const QRectF body = QRectF(rect());
+    const qreal r = body.height() / 2.0;
+    QColor bed(255, 255, 255);
+    bed.setAlphaF(0.05);
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(bed);
+    painter.drawRoundedRect(body, r, r);
+
+    // The sliding accent behind the active half.
+    const qreal half = body.width() / 2.0;
+    QRectF pill(body.left() + 2 + pos_ * (half - 2), body.top() + 2, half - 2,
+                body.height() - 4);
+    QColor fill = theme::kAccent;
+    fill.setAlphaF(0.16);
+    painter.setBrush(fill);
+    painter.drawRoundedRect(pill, r - 2, r - 2);
+
+    QFont f = font();
+    f.setPixelSize(11);
+    f.setWeight(QFont::DemiBold);
+    painter.setFont(f);
+
+    painter.setPen(mix(theme::kDim, theme::kInk, 1.0 - pos_));
+    painter.drawText(QRectF(body.left(), body.top(), half, body.height()), Qt::AlignCenter,
+                     QStringLiteral("Simple"));
+    painter.setPen(mix(theme::kDim, theme::kInk, pos_));
+    painter.drawText(QRectF(body.left() + half, body.top(), half, body.height()),
+                     Qt::AlignCenter, QStringLiteral("Expert"));
 }
 
 // -------------------------------------------------------------------- Chip

@@ -35,9 +35,10 @@ public:
         float pitch = 1.0f;                // 0.5..2
         float volume = 1.0f;               // 0..1
 
-        // Prefer VOICEVOX when an engine is reachable. The system voices
-        // available here are all compact or Eloquence quality, so this is the
-        // difference between sounding synthetic and sounding like a person.
+        // Prefer VOICEVOX CORE (embedded, offline -- 冥鳴ひまり) over the system
+        // voice. The system voices available here are all compact or Eloquence
+        // quality, so this is the difference between sounding synthetic and
+        // sounding like a person.
         bool prefer_voicevox = true;
         Voicevox::Config voicevox{};
     };

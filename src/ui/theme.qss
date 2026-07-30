@@ -81,6 +81,25 @@ QLabel { background: transparent; }
   color: #f2f5f9;
 }
 
+/* ----------------------------------------------------------- workspace dock */
+
+/* The context tag over the tools: quiet accent caps that read as a label, not
+   a button, even though tapping it cycles the workspace. */
+#workspaceTag {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  color: #4d9fff;
+}
+
+/* --------------------------------------------------------------- canvas hint */
+
+#canvasHint {
+  font-size: 11px;
+  color: #515b6e;
+  letter-spacing: 0.4px;
+}
+
 /* --------------------------------------------------------- shared headings */
 
 #sectionHead {
@@ -137,6 +156,38 @@ QLineEdit#commandField {
   color: #f2f5f9;
   font-size: 15px;
   selection-background-color: #1d4f94;
+}
+
+/* --------------------------------------------------------- command palette */
+
+/* The single command surface: a raised glass card on a dimmed scrim. */
+#palettePanel {
+  background: rgba(22, 26, 35, 0.98);
+  border-radius: 16px;
+}
+QLineEdit#paletteField {
+  background: transparent;
+  border: none;
+  color: #f2f5f9;
+  font-size: 17px;
+  padding: 16px 20px;
+  selection-background-color: #1d4f94;
+}
+QListWidget#paletteList {
+  background: transparent;
+  border: none;
+  outline: none;
+  padding: 6px 8px;
+  font-size: 13px;
+}
+QListWidget#paletteList::item {
+  color: #aeb6c4;
+  padding: 9px 12px;
+  border-radius: 8px;
+}
+QListWidget#paletteList::item:selected {
+  background: rgba(61, 139, 255, 0.16);
+  color: #f2f5f9;
 }
 
 /* ------------------------------------------------------------- scrollbars */

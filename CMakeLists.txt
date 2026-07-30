@@ -77,6 +77,28 @@ FetchContent_Declare(whisper
   GIT_SHALLOW    ON)
 FetchContent_MakeAvailable(whisper)
 
+# VOICEVOX CORE -- the offline neural Japanese TTS Mimi speaks with. Not fetched
+# by CMake: it ships a prebuilt dylib + ONNX Runtime + Open JTalk dict + voice
+# models, pulled by scripts/fetch_voicevox.sh into ./voicevox_core (gitignored).
+# When that tree is absent the app still builds and falls back to AVSpeech, so
+# this is entirely optional -- MIMI_HAS_VOICEVOX gates the code in voicevox.cpp.
+set(MIMI_VOICEVOX_DIR "${CMAKE_CURRENT_SOURCE_DIR}/voicevox_core"
+    CACHE PATH "Root of the fetched VOICEVOX CORE tree")
+set(MIMI_VOICEVOX_LIB "${MIMI_VOICEVOX_DIR}/c_api/lib/libvoicevox_core.dylib")
+if(EXISTS "${MIMI_VOICEVOX_LIB}")
+  set(MIMI_HAS_VOICEVOX ON)
+  # The prebuilt dylib is stamped with the CI machine's absolute path as its
+  # install name, which no consumer can resolve. Rewrite it to @rpath so the
+  # binaries we link find it via the rpath we add below. Idempotent.
+  execute_process(
+    COMMAND install_name_tool -id "@rpath/libvoicevox_core.dylib" "${MIMI_VOICEVOX_LIB}"
+    ERROR_QUIET)
+  message(STATUS "  voicevox    : ${MIMI_VOICEVOX_DIR}")
+else()
+  set(MIMI_HAS_VOICEVOX OFF)
+  message(STATUS "  voicevox    : not found (run scripts/fetch_voicevox.sh); using AVSpeech")
+endif()
+
 # ------------------------------------------------------------------ mimi_core
 
 add_library(mimi_core STATIC
@@ -113,6 +135,17 @@ target_link_libraries(mimi_voice PUBLIC mimi_audio onnxruntime::onnxruntime
   PRIVATE whisper mimi_brain mimi_httplib "-framework AVFoundation" "-framework Foundation")
 set_source_files_properties(src/voice/tts.mm PROPERTIES
   COMPILE_FLAGS "-fobjc-arc -std=c++20")
+
+# VOICEVOX CORE. PUBLIC so the dylib link and the rpath propagate to every
+# executable that links mimi_voice (the app and the CLI harnesses). The library
+# dlopens its ONNX Runtime by path at runtime, so only the core dylib is linked.
+if(MIMI_HAS_VOICEVOX)
+  target_compile_definitions(mimi_voice PRIVATE MIMI_HAS_VOICEVOX VOICEVOX_LOAD_ONNXRUNTIME)
+  target_include_directories(mimi_voice SYSTEM PRIVATE "${MIMI_VOICEVOX_DIR}/c_api/include")
+  # Full-path link: CMake propagates it to every executable that links
+  # mimi_voice and auto-adds an rpath to the dylib's directory for the build tree.
+  target_link_libraries(mimi_voice PUBLIC "${MIMI_VOICEVOX_LIB}")
+endif()
 
 # ----------------------------------------------------------------- mimi_brain
 
@@ -173,6 +206,22 @@ if(MIMI_BUILD_GUI)
     src/ui/ambient.cpp
     src/ui/controls.cpp
     src/ui/command_bar.cpp
+    src/ui/workspace_dock.cpp
+    src/ui/canvas_view.cpp
+    src/ui/timeline_view.cpp
+    src/ui/live_thinking.cpp
+    src/ui/context_ribbon.cpp
+    src/ui/predictive.cpp
+    src/ui/ai_dock.cpp
+    src/ui/command_palette.cpp
+    src/ui/glass_card.cpp
+    src/ui/mission_control.cpp
+    src/ui/neural_search.cpp
+    src/ui/ambient_notice.cpp
+    src/ui/digital_twin.cpp
+    src/ui/relationship_graph.cpp
+    src/ui/smart_voice.cpp
+    src/ui/ambient_audio.mm
     src/ui/icons.cpp
     src/ui/mac_window.mm
     src/ui/voice_orb.cpp
@@ -184,6 +233,23 @@ if(MIMI_BUILD_GUI)
     src/ui/ambient.hpp
     src/ui/controls.hpp
     src/ui/command_bar.hpp
+    src/ui/workspace_dock.hpp
+    src/ui/canvas_view.hpp
+    src/ui/timeline_view.hpp
+    src/ui/live_thinking.hpp
+    src/ui/context_ribbon.hpp
+    src/ui/predictive.hpp
+    src/ui/ai_dock.hpp
+    src/ui/command_palette.hpp
+    src/ui/glass_card.hpp
+    src/ui/mission_control.hpp
+    src/ui/neural_search.hpp
+    src/ui/ambient_notice.hpp
+    src/ui/digital_twin.hpp
+    src/ui/relationship_graph.hpp
+    src/ui/smart_voice.hpp
+    src/ui/ambient_audio.hpp
+    src/ui/presence.hpp
     src/ui/icons.hpp
     src/ui/mac_window.hpp
     src/ui/voice_orb.hpp
@@ -208,7 +274,7 @@ if(MIMI_BUILD_GUI)
   target_link_libraries(mimi_app PRIVATE Qt6::Widgets mimi_voice mimi_brain
     "-framework AppKit")
 
-  set_source_files_properties(src/ui/mac_window.mm PROPERTIES
+  set_source_files_properties(src/ui/mac_window.mm src/ui/ambient_audio.mm PROPERTIES
     COMPILE_FLAGS "-fobjc-arc -std=c++20")
 
   set_target_properties(mimi_app PROPERTIES
@@ -219,6 +285,55 @@ if(MIMI_BUILD_GUI)
     MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"
     MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}"
     MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/cmake/Info.plist.in")
+
+  # Offscreen screenshot harness: renders the UI widgets in isolation (no native
+  # chrome, mic or models) so the drawing can be verified without launching the
+  # always-on app. Shares the app's own widget sources.
+  if(MIMI_BUILD_TOOLS)
+    qt_add_executable(mimi_gallery
+      tools/mimi_gallery.cpp
+      src/ui/ambient.cpp
+      src/ui/voice_orb.cpp
+      src/ui/canvas_view.cpp
+      src/ui/timeline_view.cpp
+      src/ui/workspace_dock.cpp
+      src/ui/live_thinking.cpp
+      src/ui/context_ribbon.cpp
+      src/ui/predictive.cpp
+      src/ui/ai_dock.cpp
+      src/ui/command_palette.cpp
+      src/ui/glass_card.cpp
+      src/ui/mission_control.cpp
+      src/ui/neural_search.cpp
+      src/ui/digital_twin.cpp
+      src/ui/smart_voice.cpp
+      src/ui/controls.cpp
+      src/ui/icons.cpp
+      src/ui/home_view.cpp
+      src/ui/ambient.hpp
+      src/ui/voice_orb.hpp
+      src/ui/canvas_view.hpp
+      src/ui/timeline_view.hpp
+      src/ui/workspace_dock.hpp
+      src/ui/live_thinking.hpp
+      src/ui/context_ribbon.hpp
+      src/ui/predictive.hpp
+      src/ui/ai_dock.hpp
+      src/ui/command_palette.hpp
+      src/ui/glass_card.hpp
+      src/ui/mission_control.hpp
+      src/ui/neural_search.hpp
+      src/ui/digital_twin.hpp
+      src/ui/smart_voice.hpp
+      src/ui/controls.hpp
+      src/ui/home_view.hpp
+    )
+    qt_add_resources(mimi_gallery "galleryicon"
+      PREFIX "/" BASE "assets" FILES assets/mimi_face.png)
+    target_link_libraries(mimi_gallery PRIVATE Qt6::Widgets mimi_voice mimi_brain)
+    target_compile_definitions(mimi_gallery PRIVATE
+      MIMI_SRC_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+  endif()
 endif()
 
 message(STATUS "")

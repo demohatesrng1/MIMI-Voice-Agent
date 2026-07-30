@@ -13,6 +13,11 @@ models/
 voices/*.onnx
 voices/*.onnx.json
 
+# --- VOICEVOX CORE -----------------------------------------------------------
+# Prebuilt engine + ONNX Runtime + Open JTalk dict + voice models. Fetched by
+# scripts/fetch_voicevox.sh instead.
+voicevox_core/
+
 # --- retired python implementation -------------------------------------------
 # Superseded by src/. Kept on disk for reference, out of the repo. Still in
 # history before the C++ rewrite if it is ever needed.

@@ -1,14 +1,19 @@
 #pragma once
 
+#include "ui/presence.hpp"
+#include "ui/workspace_dock.hpp"
+
 #include <QString>
 #include <QWidget>
 
 class QLabel;
-class QTimer;
 
 namespace mimi::ui {
 
 class VoiceOrb;
+class ConfidenceMeter;
+class LiveThinking;
+class PredictiveActions;
 
 // The main surface.
 //
@@ -16,34 +21,38 @@ class VoiceOrb;
 // conversation with an assistant -- you glance at what she is doing now and
 // reach for what she can do next. So: her, large and alive at the centre;
 // the single exchange in progress, in type big enough to read across a desk;
-// and a quiet row of suggestions, because a voice product that does not tell
-// you what to say is unusable on the first day.
+// a confidence read-out under the answer; and the workspace dock, which
+// rearranges itself around what you are doing.
 class HomeView : public QWidget {
     Q_OBJECT
 
 public:
     explicit HomeView(QWidget* parent = nullptr);
 
-    void setState(int state);
+    void setPresence(Presence presence);
     void setLevel(float rms);
     // The current exchange. Either may be empty.
     void setExchange(const QString& said, const QString& replied);
     void setThinking();
+    // 0..1 to show under the answer; a negative value clears it.
+    void setConfidence(qreal value);
+
+    WorkspaceDock* workspace() const { return dock_; }
 
 Q_SIGNALS:
-    // A suggestion chip was pressed; the text is fed through the router
+    // A suggestion or tool was pressed; the text is fed through the router
     // exactly as if it had been spoken.
     void commandRequested(QString utterance);
 
 private:
-    QWidget* buildChips();
-
     VoiceOrb* orb_ = nullptr;
     QLabel* stateLabel_ = nullptr;
     QLabel* saidLabel_ = nullptr;
     QLabel* replyLabel_ = nullptr;
-    QTimer* thinkingTick_ = nullptr;
-    int thinkingBeat_ = 0;
+    LiveThinking* live_ = nullptr;
+    ConfidenceMeter* confidence_ = nullptr;
+    PredictiveActions* predictive_ = nullptr;
+    WorkspaceDock* dock_ = nullptr;
 };
 
 }  // namespace mimi::ui

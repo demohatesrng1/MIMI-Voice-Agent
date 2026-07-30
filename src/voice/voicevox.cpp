@@ -1,184 +1,274 @@
 #include "voice/voicevox.hpp"
 
-#include "brain/shell.hpp"
 #include "core/log.hpp"
+#include "core/paths.hpp"
 
-#include <httplib.h>
+#include <cstdlib>
+#include <mutex>
+#include <system_error>
+
+#ifdef MIMI_HAS_VOICEVOX
 #include <nlohmann/json.hpp>
-
-#include <filesystem>
-#include <thread>
+#include <voicevox_core.h>
+#endif
 
 namespace mimi::voice {
 namespace {
 
 constexpr std::string_view kTag = "voicevox";
-using json = nlohmann::json;
+namespace fs = std::filesystem;
 
-constexpr const char* kAppPath = "/Applications/VOICEVOX.app";
-
-struct Endpoint {
-    std::string host = "localhost";
-    int port = 50021;
-};
-
-Endpoint parse(const std::string& url) {
-    Endpoint out;
-    std::string rest = url;
-    if (const auto at = rest.find("://"); at != std::string::npos) rest = rest.substr(at + 3);
-    if (const auto slash = rest.find('/'); slash != std::string::npos) rest = rest.substr(0, slash);
-    if (const auto colon = rest.rfind(':'); colon != std::string::npos) {
-        out.host = rest.substr(0, colon);
-        try {
-            out.port = std::stoi(rest.substr(colon + 1));
-        } catch (...) {
-        }
-    } else if (!rest.empty()) {
-        out.host = rest;
-    }
-    return out;
+// The fetched tree looks like:
+//   voicevox_core/c_api/lib/libvoicevox_core.dylib
+//   voicevox_core/onnxruntime/lib/libvoicevox_onnxruntime.<ver>.dylib
+//   voicevox_core/dict/open_jtalk_dic_utf_8-1.11/
+//   voicevox_core/models/vvms/1.vvm
+bool looks_like_root(const fs::path& dir) {
+    std::error_code ec;
+    return !dir.empty() && fs::is_directory(dir / "models" / "vvms", ec);
 }
 
-std::string url_encode(const std::string& text) {
-    static const char* hex = "0123456789ABCDEF";
-    std::string out;
-    out.reserve(text.size() * 3);
-    for (unsigned char c : text) {
-        if (std::isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') {
-            out += static_cast<char>(c);
-        } else {
-            out += '%';
-            out += hex[c >> 4];
-            out += hex[c & 0x0F];
+// Discovers the voicevox_core/ tree: an explicit override, then the repo
+// checkout when running from a build tree, then the app bundle, then the data
+// dir. Empty if none has it.
+fs::path find_root(const fs::path& configured) {
+    if (looks_like_root(configured)) return configured;
+
+    if (const char* env = std::getenv("MIMI_VOICEVOX_DIR"); env != nullptr && *env != '\0') {
+        if (looks_like_root(env)) return env;
+    }
+
+    std::vector<fs::path> candidates;
+    // Walk up from the executable looking for <repo>/voicevox_core.
+    fs::path dir = paths::exe_dir();
+    for (int depth = 0; depth < 6 && !dir.empty() && dir != dir.root_path(); ++depth) {
+        candidates.push_back(dir / "voicevox_core");
+        dir = dir.parent_path();
+    }
+    // Inside a bundle: Mimi.app/Contents/Resources/voicevox_core.
+    candidates.push_back(paths::exe_dir() / ".." / "Resources" / "voicevox_core");
+    candidates.push_back(paths::data_dir() / "voicevox_core");
+
+    for (const auto& c : candidates) {
+        if (looks_like_root(c)) return fs::weakly_canonical(c);
+    }
+    return {};
+}
+
+// First file under `dir` whose name matches the prefix/suffix, or empty.
+fs::path first_matching(const fs::path& dir, std::string_view prefix, std::string_view suffix) {
+    std::error_code ec;
+    if (!fs::is_directory(dir, ec)) return {};
+    for (const auto& entry : fs::directory_iterator(dir, ec)) {
+        const std::string name = entry.path().filename().string();
+        if (name.rfind(prefix, 0) == 0 && name.size() >= suffix.size() &&
+            name.compare(name.size() - suffix.size(), suffix.size(), suffix) == 0) {
+            return entry.path();
         }
     }
-    return out;
+    return {};
+}
+
+}  // namespace
+
+#ifdef MIMI_HAS_VOICEVOX
+
+using json = nlohmann::json;
+
+namespace {
+
+const char* code_message(VoicevoxResultCode code) {
+    return voicevox_error_result_to_message(code);
 }
 
 }  // namespace
 
 struct Voicevox::Impl {
-    Endpoint endpoint;
+    fs::path root;
+    std::mutex mutex;
+    bool initialized = false;
 
-    std::unique_ptr<httplib::Client> connect(std::chrono::seconds timeout) const {
-        auto client = std::make_unique<httplib::Client>(endpoint.host, endpoint.port);
-        client->set_connection_timeout(2, 0);
-        client->set_read_timeout(static_cast<time_t>(timeout.count()), 0);
-        return client;
+    const VoicevoxOnnxruntime* onnxruntime = nullptr;
+    OpenJtalkRc* open_jtalk = nullptr;
+    VoicevoxSynthesizer* synthesizer = nullptr;
+
+    ~Impl() {
+        if (synthesizer != nullptr) voicevox_synthesizer_delete(synthesizer);
+        if (open_jtalk != nullptr) voicevox_open_jtalk_rc_delete(open_jtalk);
+        // The ONNX Runtime is a process-global singleton owned by the library;
+        // there is no matching free and it must outlive every synthesiser.
+    }
+
+    bool init(const Voicevox::Config& config) {
+        std::lock_guard lock(mutex);
+        if (initialized) return true;
+
+        if (root.empty()) {
+            log::info(kTag, "{}", Voicevox::install_hint());
+            return false;
+        }
+
+        const fs::path ort = first_matching(root / "onnxruntime" / "lib",
+                                            "libvoicevox_onnxruntime", ".dylib");
+        const fs::path dict = first_matching(root / "dict", "open_jtalk_dic", "");
+        const fs::path vvm = root / "models" / "vvms" / config.model_file;
+
+        std::error_code ec;
+        if (ort.empty() || dict.empty() || !fs::exists(vvm, ec)) {
+            log::warn(kTag, "incomplete runtime under {} (ort={}, dict={}, vvm={})",
+                      root.string(), !ort.empty(), !dict.empty(), fs::exists(vvm, ec));
+            return false;
+        }
+
+        VoicevoxLoadOnnxruntimeOptions oopt = voicevox_make_default_load_onnxruntime_options();
+        const std::string ort_str = ort.string();
+        oopt.filename = ort_str.c_str();
+        if (auto r = voicevox_onnxruntime_load_once(oopt, &onnxruntime); r != VOICEVOX_RESULT_OK) {
+            log::warn(kTag, "could not load ONNX Runtime: {}", code_message(r));
+            return false;
+        }
+
+        const std::string dict_str = dict.string();
+        if (auto r = voicevox_open_jtalk_rc_new(dict_str.c_str(), &open_jtalk);
+            r != VOICEVOX_RESULT_OK) {
+            log::warn(kTag, "could not load the Open JTalk dictionary: {}", code_message(r));
+            return false;
+        }
+
+        VoicevoxInitializeOptions iopt = voicevox_make_default_initialize_options();
+        iopt.acceleration_mode = VOICEVOX_ACCELERATION_MODE_CPU;
+        if (auto r = voicevox_synthesizer_new(onnxruntime, open_jtalk, iopt, &synthesizer);
+            r != VOICEVOX_RESULT_OK) {
+            log::warn(kTag, "could not create the synthesiser: {}", code_message(r));
+            return false;
+        }
+
+        VoicevoxVoiceModelFile* model = nullptr;
+        const std::string vvm_str = vvm.string();
+        if (auto r = voicevox_voice_model_file_open(vvm_str.c_str(), &model);
+            r != VOICEVOX_RESULT_OK) {
+            log::warn(kTag, "could not open {}: {}", vvm_str, code_message(r));
+            return false;
+        }
+        const auto load = voicevox_synthesizer_load_voice_model(synthesizer, model);
+        voicevox_voice_model_file_delete(model);
+        if (load != VOICEVOX_RESULT_OK) {
+            log::warn(kTag, "could not load the voice model: {}", code_message(load));
+            return false;
+        }
+
+        initialized = true;
+        log::info(kTag, "embedded engine ready (style {} from {})", config.style_id,
+                  vvm.filename().string());
+        return true;
     }
 };
 
 Voicevox::Voicevox(Config config)
     : config_(std::move(config)), impl_(std::make_unique<Impl>()) {
-    impl_->endpoint = parse(config_.host);
+    impl_->root = find_root(config_.root);
 }
 
 Voicevox::~Voicevox() = default;
 
-std::string Voicevox::install_hint() {
-    return "VOICEVOX is not installed. Download it from https://voicevox.hiroshiba.jp "
-           "and drag it to /Applications.";
-}
+bool Voicevox::available() const { return impl_->initialized; }
 
-bool Voicevox::available() const {
-    auto client = impl_->connect(std::chrono::seconds{3});
-    auto response = client->Get("/version");
-    return response && response->status == 200;
-}
-
-bool Voicevox::ensure_running(std::chrono::seconds wait) {
-    if (available()) return true;
-
-    std::error_code ec;
-    if (!std::filesystem::exists(kAppPath, ec)) {
-        log::info(kTag, "{}", install_hint());
-        return false;
-    }
-
-    // Opening the app starts its bundled engine. -j keeps it from stealing
-    // focus, which matters for something launched at startup.
-    log::info(kTag, "starting VOICEVOX");
-    if (!brain::run("open", {"-g", "-j", "-a", kAppPath}, 15).ok()) {
-        log::warn(kTag, "could not launch {}", kAppPath);
-        return false;
-    }
-
-    // The engine loads its models before binding, so this is slow the first
-    // time -- tens of seconds, not the sub-second Ollama takes.
-    const auto deadline = std::chrono::steady_clock::now() + wait;
-    while (std::chrono::steady_clock::now() < deadline) {
-        std::this_thread::sleep_for(std::chrono::milliseconds{700});
-        if (available()) {
-            log::info(kTag, "engine ready");
-            return true;
-        }
-    }
-    log::warn(kTag, "engine did not answer within {}s", wait.count());
-    return false;
-}
+bool Voicevox::ensure_running(std::chrono::seconds) { return impl_->init(config_); }
 
 std::vector<VoicevoxStyle> Voicevox::styles() const {
     std::vector<VoicevoxStyle> out;
-    auto client = impl_->connect(std::chrono::seconds{10});
-    auto response = client->Get("/speakers");
-    if (!response || response->status != 200) return out;
-
+    if (!impl_->initialized) return out;
+    char* metas = voicevox_synthesizer_create_metas_json(impl_->synthesizer);
+    if (metas == nullptr) return out;
     try {
-        for (const auto& speaker : json::parse(response->body)) {
+        for (const auto& speaker : json::parse(metas)) {
             const std::string name = speaker.value("name", "");
             for (const auto& style : speaker.value("styles", json::array())) {
                 out.push_back({name, style.value("name", ""), style.value("id", 0)});
             }
         }
     } catch (const std::exception& e) {
-        log::warn(kTag, "could not read the speaker list: {}", e.what());
+        log::warn(kTag, "could not read the style list: {}", e.what());
     }
+    voicevox_json_free(metas);
     return out;
 }
 
 std::vector<std::uint8_t> Voicevox::synthesize(const std::string& text) const {
     std::vector<std::uint8_t> audio;
-    if (text.empty()) return audio;
+    if (text.empty() || !impl_->initialized) return audio;
 
-    auto client = impl_->connect(config_.timeout);
-    const std::string speaker = std::to_string(config_.style_id);
+    const auto style = static_cast<std::uint32_t>(config_.style_id);
 
-    // Two steps by design: /audio_query returns an editable prosody plan, and
-    // /synthesis renders it. Going straight to synthesis is not possible, and
-    // the intermediate is where speed and intonation are set.
-    auto query = client->Post(
-        "/audio_query?text=" + url_encode(text) + "&speaker=" + speaker, "", "application/json");
-    if (!query || query->status != 200) {
-        log::warn(kTag, "audio_query failed{}",
-                  query ? " (" + std::to_string(query->status) + ")" : "");
+    // Two steps, mirroring the HTTP engine: create_audio_query returns an
+    // editable prosody plan and synthesis renders it. The intermediate is where
+    // speed and intonation are set -- flat intonation is most of what makes
+    // synthetic speech sound synthetic.
+    char* query = nullptr;
+    if (auto r = voicevox_synthesizer_create_audio_query(impl_->synthesizer, text.c_str(), style,
+                                                         &query);
+        r != VOICEVOX_RESULT_OK) {
+        log::warn(kTag, "audio_query failed: {}", code_message(r));
         return audio;
     }
 
-    json plan;
+    std::string plan_str;
     try {
-        plan = json::parse(query->body);
+        json plan = json::parse(query);
+        plan["speedScale"] = config_.speed;
+        plan["pitchScale"] = config_.pitch;
+        plan["intonationScale"] = config_.intonation;
+        plan["outputStereo"] = false;
+        plan_str = plan.dump();
     } catch (const std::exception& e) {
-        log::warn(kTag, "could not parse audio_query: {}", e.what());
+        log::warn(kTag, "could not edit audio_query: {}", e.what());
+        voicevox_json_free(query);
+        return audio;
+    }
+    voicevox_json_free(query);
+
+    VoicevoxSynthesisOptions sopt = voicevox_make_default_synthesis_options();
+    std::uint8_t* wav = nullptr;
+    std::uintptr_t wav_len = 0;
+    if (auto r = voicevox_synthesizer_synthesis(impl_->synthesizer, plan_str.c_str(), style, sopt,
+                                                &wav_len, &wav);
+        r != VOICEVOX_RESULT_OK) {
+        log::warn(kTag, "synthesis failed: {}", code_message(r));
         return audio;
     }
 
-    plan["speedScale"] = config_.speed;
-    plan["pitchScale"] = config_.pitch;
-    // Flat intonation is most of what makes synthetic speech sound synthetic.
-    plan["intonationScale"] = config_.intonation;
-    plan["outputStereo"] = false;
-
-    auto rendered =
-        client->Post("/synthesis?speaker=" + speaker, plan.dump(), "application/json");
-    if (!rendered || rendered->status != 200) {
-        log::warn(kTag, "synthesis failed{}",
-                  rendered ? " (" + std::to_string(rendered->status) + ")" : "");
-        return audio;
-    }
-
-    audio.assign(rendered->body.begin(), rendered->body.end());
+    audio.assign(wav, wav + wav_len);
+    voicevox_wav_free(wav);
     log::debug(kTag, "{} chars -> {} KB of audio", text.size(), audio.size() / 1024);
     return audio;
 }
+
+std::string Voicevox::install_hint() {
+    return "VOICEVOX CORE is not installed. Run scripts/fetch_voicevox.sh to download the "
+           "engine and the 冥鳴ひまり voice model.";
+}
+
+#else  // MIMI_HAS_VOICEVOX not defined -- built without the core library.
+
+struct Voicevox::Impl {
+    fs::path root;
+    bool initialized = false;
+};
+
+Voicevox::Voicevox(Config config)
+    : config_(std::move(config)), impl_(std::make_unique<Impl>()) {}
+Voicevox::~Voicevox() = default;
+bool Voicevox::available() const { return false; }
+bool Voicevox::ensure_running(std::chrono::seconds) {
+    log::info(kTag, "built without VOICEVOX CORE; using the system voice");
+    return false;
+}
+std::vector<VoicevoxStyle> Voicevox::styles() const { return {}; }
+std::vector<std::uint8_t> Voicevox::synthesize(const std::string&) const { return {}; }
+std::string Voicevox::install_hint() {
+    return "This build does not include VOICEVOX CORE.";
+}
+
+#endif  // MIMI_HAS_VOICEVOX
 
 }  // namespace mimi::voice

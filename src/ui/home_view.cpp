@@ -1,38 +1,17 @@
 #include "ui/home_view.hpp"
 
 #include "ui/controls.hpp"
+#include "ui/live_thinking.hpp"
+#include "ui/predictive.hpp"
+#include "ui/smart_voice.hpp"
 #include "ui/voice_orb.hpp"
-#include "voice/listener.hpp"
+#include "ui/workspace_dock.hpp"
 
-#include <QHBoxLayout>
 #include <QLabel>
 #include <QStyle>
-#include <QTimer>
 #include <QVBoxLayout>
 
-#include <array>
-
 namespace mimi::ui {
-namespace {
-
-// Label, and the utterance it stands for. Four, not a wall: enough to teach
-// the range -- read the machine, change it, capture it, secure it -- without
-// turning the hero surface into a control panel.
-struct Suggestion {
-    const char* label;
-    // Sent to the router in Japanese, because that is the language she runs in.
-    // Only the label the user reads is English.
-    const char* utterance;
-};
-
-const std::array<Suggestion, 4> kSuggestions{{
-    {"What time is it?", "今何時ですか"},
-    {"Battery status", "バッテリーはどのくらい"},
-    {"Take a screenshot", "スクリーンショットを撮って"},
-    {"Lock the screen", "画面をロックして"},
-}};
-
-}  // namespace
 
 HomeView::HomeView(QWidget* parent) : QWidget(parent) {
     setObjectName(QStringLiteral("home"));
@@ -54,7 +33,10 @@ HomeView::HomeView(QWidget* parent) : QWidget(parent) {
     stateLabel_->setAlignment(Qt::AlignCenter);
     layout->addWidget(stateLabel_);
 
-    layout->addSpacing(28);
+    layout->addSpacing(8);
+    layout->addWidget(new SmartVoiceBar, 0, Qt::AlignHCenter);
+
+    layout->addSpacing(20);
 
     // The exchange in progress. What you said sits above, quiet and small;
     // her answer below, large. The eye should land on the answer.
@@ -74,52 +56,47 @@ HomeView::HomeView(QWidget* parent) : QWidget(parent) {
     replyLabel_->setMinimumHeight(76);
     layout->addWidget(replyLabel_);
 
+    // Live thinking occupies the same slot as the answer: shown while she works
+    // the pipeline, hidden the instant there is a reply to read.
+    live_ = new LiveThinking;
+    live_->setVisible(false);
+    layout->addWidget(live_, 0, Qt::AlignHCenter);
+
+    layout->addSpacing(14);
+
+    // How sure she is of the answer, under it. Hidden until there is one.
+    confidence_ = new ConfidenceMeter;
+    confidence_->setVisible(false);
+    layout->addWidget(confidence_, 0, Qt::AlignHCenter);
+
+    layout->addSpacing(18);
+
+    // Predictive actions: proactive next steps, shown only while she is idle
+    // and observing. Same command path as everything else.
+    predictive_ = new PredictiveActions;
+    connect(predictive_, &PredictiveActions::commandRequested, this,
+            &HomeView::commandRequested);
+    layout->addWidget(predictive_);
+
     layout->addStretch(4);
-    layout->addWidget(buildChips());
 
-    // Thinking is animated, not static: a breathing ellipsis on a slow beat,
-    // so waiting reads as her working rather than the app hanging.
-    thinkingTick_ = new QTimer(this);
-    thinkingTick_->setInterval(400);
-    connect(thinkingTick_, &QTimer::timeout, this, [this] {
-        thinkingBeat_ = (thinkingBeat_ + 1) % 3;
-        replyLabel_->setText(QStringLiteral("·  ·  ·").left(3 * thinkingBeat_ + 1));
-    });
+    // The workspace dock, in place of a fixed suggestion row: the tools follow
+    // what you are doing. Its commands run through the same path as everything.
+    dock_ = new WorkspaceDock;
+    connect(dock_, &WorkspaceDock::commandRequested, this, &HomeView::commandRequested);
+    layout->addWidget(dock_);
 }
 
-QWidget* HomeView::buildChips() {
-    auto* holder = new QWidget;
-    auto* row = new QHBoxLayout(holder);
-    row->setContentsMargins(0, 0, 0, 0);
-    row->setSpacing(8);
-    row->addStretch(1);
-
-    for (const auto& suggestion : kSuggestions) {
-        auto* chip = new Chip(QString::fromUtf8(suggestion.label));
-        const QString utterance = QString::fromUtf8(suggestion.utterance);
-        connect(chip, &Chip::clicked, this,
-                [this, utterance] { Q_EMIT commandRequested(utterance); });
-        row->addWidget(chip);
-    }
-
-    row->addStretch(1);
-    return holder;
-}
-
-void HomeView::setState(int state) {
-    orb_->setState(state);
-    const auto value = static_cast<voice::State>(state);
-    switch (value) {
-        case voice::State::Idle:      stateLabel_->setText(QStringLiteral("READY")); break;
-        case voice::State::Listening: stateLabel_->setText(QStringLiteral("LISTENING")); break;
-        case voice::State::Thinking:  stateLabel_->setText(QStringLiteral("THINKING")); break;
-        case voice::State::Speaking:  stateLabel_->setText(QStringLiteral("SPEAKING")); break;
-        case voice::State::Paused:    stateLabel_->setText(QStringLiteral("MUTED")); break;
-    }
-    stateLabel_->setProperty("mode", static_cast<int>(value));
-    // Re-polish so the stylesheet picks up the changed property.
+void HomeView::setPresence(Presence presence) {
+    orb_->setPresence(presence);
+    stateLabel_->setText(presence_headline(presence));
+    stateLabel_->setProperty("mode", static_cast<int>(presence));
+    // Re-polish so the stylesheet can pick up the changed property.
     stateLabel_->style()->unpolish(stateLabel_);
     stateLabel_->style()->polish(stateLabel_);
+    // Anticipation belongs to the quiet moments: offer next steps only when she
+    // is idle and watching, never mid-exchange.
+    predictive_->setVisible(presence == Presence::Observing);
 }
 
 void HomeView::setLevel(float rms) { orb_->setLevel(rms); }
@@ -128,15 +105,25 @@ void HomeView::setExchange(const QString& said, const QString& replied) {
     saidLabel_->setText(said.isEmpty() ? QString() : QStringLiteral("「%1」").arg(said));
     saidLabel_->setVisible(!said.isEmpty());
     if (!replied.isEmpty()) {
-        thinkingTick_->stop();
+        live_->finish();
+        live_->setVisible(false);
+        replyLabel_->setVisible(true);
         replyLabel_->setText(replied);
     }
 }
 
 void HomeView::setThinking() {
-    thinkingBeat_ = 0;
-    replyLabel_->setText(QStringLiteral("·"));
-    thinkingTick_->start();
+    // Swap the answer slot for the live-thinking pipeline.
+    replyLabel_->setVisible(false);
+    predictive_->setVisible(false);
+    live_->setVisible(true);
+    live_->start();
+    setConfidence(-1.0);  // last answer's certainty no longer applies
+}
+
+void HomeView::setConfidence(qreal value) {
+    confidence_->setConfidence(value);
+    confidence_->setVisible(value >= 0.0);
 }
 
 }  // namespace mimi::ui

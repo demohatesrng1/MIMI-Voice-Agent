@@ -57,6 +57,104 @@ QPainterPath build(Glyph glyph) {
             break;
         }
 
+        case Glyph::Canvas:
+            // A board with cards on it: an outer frame and two offset tiles,
+            // for the infinite canvas. Reads as a workspace, not a document.
+            p.addRoundedRect(QRectF(3.5, 4.5, 17, 15), 2.4, 2.4);
+            p.addRoundedRect(QRectF(6, 7, 5.5, 4), 1.2, 1.2);
+            p.addRoundedRect(QRectF(13, 11, 5, 5.5), 1.2, 1.2);
+            break;
+
+        case Glyph::Timeline:
+            // A spine with three nodes and their ticks -- events threaded in
+            // time, top to bottom.
+            p.moveTo(7, 4.5);
+            p.lineTo(7, 19.5);
+            p.addEllipse(QPointF(7, 7), 1.5, 1.5);
+            p.addEllipse(QPointF(7, 12), 1.5, 1.5);
+            p.addEllipse(QPointF(7, 17), 1.5, 1.5);
+            p.moveTo(10, 7);   p.lineTo(18, 7);
+            p.moveTo(10, 12);  p.lineTo(16, 12);
+            p.moveTo(10, 17);  p.lineTo(18, 17);
+            break;
+
+        case Glyph::Chat:
+            // A speech bubble with a tail: conversation.
+            p.addRoundedRect(QRectF(3.5, 4.5, 17, 11), 3, 3);
+            p.moveTo(8.5, 15.5);
+            p.lineTo(7.5, 19.5);
+            p.lineTo(12.5, 15.5);
+            break;
+
+        case Glyph::Vision:
+            // An eye: an almond formed by two curves, with an iris.
+            p.moveTo(3.5, 12);
+            p.quadTo(12, 5, 20.5, 12);
+            p.quadTo(12, 19, 3.5, 12);
+            p.closeSubpath();
+            p.addEllipse(QPointF(12, 12), 2.7, 2.7);
+            break;
+
+        case Glyph::Files:
+            // A document with a folded corner.
+            p.moveTo(6, 3.5);
+            p.lineTo(14, 3.5);
+            p.lineTo(18.5, 8);
+            p.lineTo(18.5, 20.5);
+            p.lineTo(6, 20.5);
+            p.closeSubpath();
+            p.moveTo(14, 3.5);
+            p.lineTo(14, 8);
+            p.lineTo(18.5, 8);
+            break;
+
+        case Glyph::Browser:
+            // A globe: a circle crossed by an equator and a meridian.
+            p.addEllipse(QPointF(12, 12), 8.3, 8.3);
+            p.moveTo(3.7, 12);
+            p.lineTo(20.3, 12);
+            p.moveTo(12, 3.7);
+            p.quadTo(6.2, 12, 12, 20.3);
+            p.moveTo(12, 3.7);
+            p.quadTo(17.8, 12, 12, 20.3);
+            break;
+
+        case Glyph::Automation:
+            // A lightning bolt: work that runs itself.
+            p.moveTo(13, 3.5);
+            p.lineTo(6.5, 13);
+            p.lineTo(11, 13);
+            p.lineTo(10, 20.5);
+            p.lineTo(17, 10.5);
+            p.lineTo(12.5, 10.5);
+            p.closeSubpath();
+            break;
+
+        case Glyph::Memory:
+            // A database cylinder: stored knowledge.
+            p.addEllipse(QRectF(5, 4, 14, 5));
+            p.moveTo(5, 6.5);
+            p.lineTo(5, 17.5);
+            p.quadTo(12, 20.5, 19, 17.5);
+            p.lineTo(19, 6.5);
+            p.moveTo(5, 12);
+            p.quadTo(12, 15, 19, 12);
+            break;
+
+        case Glyph::Mission:
+            // A target: an objective to lock onto.
+            p.addEllipse(QPointF(12, 12), 8.3, 8.3);
+            p.addEllipse(QPointF(12, 12), 4.3, 4.3);
+            p.addEllipse(QPointF(12, 12), 1.0, 1.0);
+            break;
+
+        case Glyph::Search:
+            // A magnifier.
+            p.addEllipse(QPointF(10.5, 10.5), 5.6, 5.6);
+            p.moveTo(14.6, 14.6);
+            p.lineTo(19.6, 19.6);
+            break;
+
         case Glyph::Settings: {
             // A real gear silhouette -- eight teeth around a ring with a hub.
             // The old radial ticks read as a sun, not settings.

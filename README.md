@@ -63,10 +63,18 @@ Requires macOS, CMake ≥ 3.24 and Xcode Command Line Tools.
 ```bash
 brew install cmake ninja onnxruntime qt nlohmann-json
 ./scripts/fetch_models.sh          # ~600 MB, gitignored
+./scripts/fetch_voicevox.sh -y     # VOICEVOX CORE + 冥鳴ひまり voice, gitignored
 cmake -S . -B build -G Ninja -DCMAKE_PREFIX_PATH="$(brew --prefix)"
 cmake --build build
 open build/Mimi.app
 ```
+
+Mimi's voice is [VOICEVOX](https://voicevox.hiroshiba.jp) CORE running in-process
+(character **冥鳴ひまり**, style ノーマル), so she speaks with the VOICEVOX app
+closed. If `fetch_voicevox.sh` is skipped, she falls back to the macOS system
+voice (Kyoko). `-y` accepts the VOICEVOX voice-model and ONNX Runtime terms of
+use — free for any use, but a **VOICEVOX** credit is required wherever the
+generated voice is heard (see Credits).
 
 For the brain: [Ollama](https://ollama.com) with `ollama pull gemma3n:e4b` and
 `ollama pull nomic-embed-text`, then `ollama serve`.
@@ -120,3 +128,9 @@ and profile live in `~/Library/Application Support/Mimi/` and are gitignored.
 The `PhraseSpotter` backend does transcribe every speech segment locally in
 order to find the wake phrase. If you want audio only processed *after* the
 wake word, use the `OpenWakeWord` backend with a trained model.
+
+## Credits
+
+Mimi's voice is generated with **VOICEVOX** (VOICEVOX:冥鳴ひまり). VOICEVOX CORE
+and its ONNX Runtime build are © Hiroshiba Kazuyuki and contributors, used under
+their terms of use.
