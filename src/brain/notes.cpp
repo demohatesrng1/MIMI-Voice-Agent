@@ -7,6 +7,7 @@
 #include <array>
 #include <ctime>
 #include <fstream>
+#include <cstdlib>
 #include <sstream>
 
 namespace mimi::brain {
@@ -113,8 +114,21 @@ std::vector<Note> Notes::all(int limit) const {
         if (ec) break;
         if (it->path().extension() == ".md") files.push_back(it->path());
     }
-    // The id is a timestamp, so lexical order is chronological. Newest first.
-    std::sort(files.begin(), files.end(), std::greater<>());
+    // The id is a timestamp, so lexical order is *almost* chronological -- but
+    // a second note in the same second gets a "-2" suffix, and '-' sorts below
+    // '.', so "…215500-2.md" compares lower than "…215500.md" and the newer of
+    // the two came out last. Compare the timestamp and the suffix separately.
+    const auto parts = [](const std::filesystem::path& path) {
+        const std::string stem = path.stem().string();
+        constexpr std::size_t kStamp = 17;  // yyyy-mm-dd-hhmmss
+        if (stem.size() <= kStamp) return std::pair<std::string, int>{stem, 1};
+        return std::pair<std::string, int>{stem.substr(0, kStamp),
+                                           std::atoi(stem.c_str() + kStamp + 1)};
+    };
+    std::sort(files.begin(), files.end(),
+              [&parts](const std::filesystem::path& a, const std::filesystem::path& b) {
+                  return parts(a) > parts(b);  // newest first
+              });
 
     for (const auto& path : files) {
         if (limit > 0 && static_cast<int>(found.size()) >= limit) break;

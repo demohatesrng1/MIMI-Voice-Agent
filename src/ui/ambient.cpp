@@ -161,20 +161,19 @@ void AmbientCanvas::paintEvent(QPaintEvent*) {
     const qreal h = height();
     const qreal t = phase_ * 2.0 * M_PI;
 
-    // Base graphite, lighter at the top: one large soft light source above the
-    // interface, like every product shot ever lit.
-    QLinearGradient base(0, 0, 0, h);
-    QColor top = theme::kLayer0;
-    top.setAlpha(234);
-    QColor bottom = theme::kVoid;
-    bottom.setAlpha(240);
-    base.setColorAt(0.0, top);
-    base.setColorAt(1.0, bottom);
-    painter.fillRect(rect(), base);
+    // Flat. A top-to-bottom wash reads as a lighting effect on a product shot,
+    // and on a real display it is just an uneven background -- text sits on a
+    // different tone at the top of the window than at the bottom, and every
+    // panel edge has to fight it. The tools people keep open all day are flat
+    // for this reason.
+    painter.fillRect(rect(), theme::kLayer0);
 
     // Two pools of resting light drifting in opposite directions. Alphas are
     // single digits: felt, not seen. Muting dims and stills them further.
-    const qreal restAlpha = 1.0 - 0.55 * mute_;
+    // Barely there. These were an order of magnitude stronger and turned the
+    // whole surface hazy; at this weight they read as a room she is in rather
+    // than as a gradient over the interface.
+    const qreal restAlpha = (1.0 - 0.55 * mute_) * 0.35;
     const QPointF a(w * (0.30 + 0.18 * std::cos(t)), h * (0.10 + 0.08 * std::sin(t * 0.7)));
     QRadialGradient poolA(a, w * 0.75);
     QColor glowA = QColor::fromHsvF(phase_, 0.55, 1.0);

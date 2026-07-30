@@ -61,6 +61,8 @@ private:
     Reply execute_step(const std::string& action, const std::string& argument);
     Reply converse(const std::string& utterance);
     // Reads notes back aloud; `when_empty` is spoken when there are none.
+    // Reads back the reminders still waiting.
+    Reply speak_reminders();
     Reply speak_notes(const std::vector<Note>& notes, const std::string& when_empty);
     // Answers a question about what is in the notes, by giving the model the
     // notes themselves. `question` empty means "summarise them".

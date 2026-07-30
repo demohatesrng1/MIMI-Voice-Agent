@@ -129,7 +129,7 @@ void ConfidenceMeter::paintEvent(QPaintEvent*) {
     painter.setRenderHint(QPainter::Antialiasing);
 
     QFont caps = font();
-    caps.setPixelSize(13);
+    caps.setPixelSize(15);
     caps.setWeight(QFont::DemiBold);
     caps.setLetterSpacing(QFont::AbsoluteSpacing, 2.0);
     painter.setFont(caps);
@@ -162,7 +162,7 @@ void ConfidenceMeter::paintEvent(QPaintEvent*) {
     painter.drawEllipse(QPointF(fill.right(), track.center().y()), 2.6, 2.6);
 
     QFont num = font();
-    num.setPixelSize(15);
+    num.setPixelSize(17);
     num.setWeight(QFont::DemiBold);
     painter.setFont(num);
     painter.setPen(theme::kDim);
@@ -230,7 +230,7 @@ void ModeToggle::paintEvent(QPaintEvent*) {
     painter.drawRoundedRect(pill, r - 2, r - 2);
 
     QFont f = font();
-    f.setPixelSize(14);
+    f.setPixelSize(16);
     f.setWeight(QFont::DemiBold);
     painter.setFont(f);
 
@@ -253,7 +253,7 @@ Chip::Chip(const QString& text, QWidget* parent) : QAbstractButton(parent) {
 
 QSize Chip::sizeHint() const {
     QFont font = this->font();
-    font.setPixelSize(18);
+    font.setPixelSize(20);
     return {QFontMetrics(font).horizontalAdvance(text()) + 48, 42};
 }
 
@@ -277,7 +277,7 @@ void Chip::paintEvent(QPaintEvent*) {
     painter.drawRoundedRect(body, 19, 19);
 
     QFont font = painter.font();
-    font.setPixelSize(16);
+    font.setPixelSize(18);
     painter.setFont(font);
     painter.setPen(mix(theme::kDim, theme::kInk, hover_));
     painter.drawText(body, Qt::AlignCenter, text());

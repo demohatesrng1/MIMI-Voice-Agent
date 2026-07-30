@@ -138,7 +138,7 @@ void TimelineStrip::paintEvent(QPaintEvent*) {
         if (m.day != prevDay) {
             // Day header: a tracked-out label with a hairline reaching right.
             QFont head = font();
-            head.setPixelSize(13);
+            head.setPixelSize(15);
             head.setWeight(QFont::DemiBold);
             head.setLetterSpacing(QFont::AbsoluteSpacing, 2.5);
             painter.setFont(head);
@@ -159,7 +159,7 @@ void TimelineStrip::paintEvent(QPaintEvent*) {
 
         // Time, in the gutter left of the spine.
         QFont timeFont = font();
-        timeFont.setPixelSize(14);
+        timeFont.setPixelSize(16);
         painter.setFont(timeFont);
         painter.setPen(theme::kFaint);
         painter.drawText(QRect(0, cy - 10, kDotX - 22, 20), Qt::AlignVCenter | Qt::AlignRight,
@@ -205,7 +205,7 @@ void TimelineStrip::paintEvent(QPaintEvent*) {
         painter.drawEllipse(QPointF(card.left() + 16, card.top() + 18), 3.0, 3.0);
 
         QFont tag = font();
-        tag.setPixelSize(12);
+        tag.setPixelSize(14);
         tag.setWeight(QFont::DemiBold);
         tag.setLetterSpacing(QFont::AbsoluteSpacing, 2.0);
         painter.setFont(tag);
@@ -216,7 +216,7 @@ void TimelineStrip::paintEvent(QPaintEvent*) {
                          Qt::AlignVCenter | Qt::AlignLeft, QString::fromUtf8(style.name));
 
         QFont titleFont = font();
-        titleFont.setPixelSize(17);
+        titleFont.setPixelSize(19);
         titleFont.setWeight(QFont::DemiBold);
         painter.setFont(titleFont);
         painter.setPen(theme::kInk);
@@ -226,7 +226,7 @@ void TimelineStrip::paintEvent(QPaintEvent*) {
                              m.title, Qt::ElideRight, static_cast<int>(card.width() - 32)));
 
         QFont detailFont = font();
-        detailFont.setPixelSize(14);
+        detailFont.setPixelSize(16);
         painter.setFont(detailFont);
         painter.setPen(theme::kDim);
         painter.drawText(QRectF(card.left() + 16, card.top() + 50, card.width() - 32, 18),

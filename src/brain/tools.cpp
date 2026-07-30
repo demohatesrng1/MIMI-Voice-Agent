@@ -1023,10 +1023,24 @@ void forget_reminder(std::int64_t due, const std::string& text) {
 }
 
 // The timer itself. Shared by a fresh reminder and a restored one.
+// True while the reminder is still on disk. A sleeping thread cannot be woken
+// to be told it was called off, so the check happens where it matters: cancel
+// removes the record, and the timer that eventually wakes finds it gone and
+// says nothing.
+bool still_wanted(std::int64_t due, const std::string& text) {
+    for (const auto& item : read_reminders()) {
+        if (item.value("due", std::int64_t{0}) == due && item.value("text", "") == text) {
+            return true;
+        }
+    }
+    return false;
+}
+
 void arm(std::chrono::seconds delay, std::int64_t due, std::string text,
          std::function<void(const std::string&)> on_fire) {
     std::thread([delay, due, text = std::move(text), on_fire = std::move(on_fire)] {
         if (delay.count() > 0) std::this_thread::sleep_for(delay);
+        if (!still_wanted(due, text)) return;  // cancelled while it slept
         if (on_fire) on_fire(text);
         forget_reminder(due, text);
     }).detach();
@@ -1044,6 +1058,67 @@ void schedule(std::chrono::seconds delay, std::string text,
     write_reminders(list);
 
     arm(delay, due, std::move(text), std::move(on_fire));
+}
+
+std::vector<Pending> pending_reminders() {
+    std::vector<Pending> out;
+    const std::int64_t now = epoch_now();
+    for (const auto& item : read_reminders()) {
+        Pending pending;
+        pending.due = item.value("due", std::int64_t{0});
+        pending.what = item.value("text", std::string{});
+        if (pending.due == 0 || pending.what.empty()) continue;
+
+        const std::int64_t left = pending.due - now;
+        if (left <= 0) {
+            pending.when = "まもなく";
+        } else if (left < 60) {
+            pending.when = std::to_string(left) + "秒後";
+        } else if (left < 3600) {
+            pending.when = std::to_string(left / 60) + "分後";
+        } else {
+            pending.when = std::to_string(left / 3600) + "時間後";
+        }
+        out.push_back(std::move(pending));
+    }
+    std::sort(out.begin(), out.end(),
+              [](const Pending& a, const Pending& b) { return a.due < b.due; });
+    return out;
+}
+
+std::string cancel_reminder(const std::string& what) {
+    const auto list = read_reminders();
+    if (list.empty()) return {};
+
+    const std::string wanted = lowercase(trim(what));
+    nlohmann::json kept = nlohmann::json::array();
+    std::string cancelled;
+
+    // Soonest first, so "cancel that reminder" with no subject drops the next
+    // one rather than an arbitrary entry.
+    auto pending = pending_reminders();
+    std::int64_t target_due = 0;
+    std::string target_text;
+    for (const auto& item : pending) {
+        if (wanted.empty() ||
+            lowercase(item.what).find(wanted) != std::string::npos) {
+            target_due = item.due;
+            target_text = item.what;
+            break;
+        }
+    }
+    if (target_text.empty()) return {};
+
+    for (const auto& item : list) {
+        if (item.value("due", std::int64_t{0}) == target_due &&
+            item.value("text", "") == target_text && cancelled.empty()) {
+            cancelled = target_text;
+            continue;
+        }
+        kept.push_back(item);
+    }
+    if (!cancelled.empty()) write_reminders(kept);
+    return cancelled;
 }
 
 int restore_reminders(std::function<void(const std::string&)> on_fire) {

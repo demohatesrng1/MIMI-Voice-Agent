@@ -93,6 +93,8 @@ private:
     GhostButton* navTimeline_ = nullptr;
     GhostButton* navNotes_ = nullptr;
     QPushButton* stopBtn_ = nullptr;
+    QPushButton* voicePill_ = nullptr;
+    bool speakReplies_ = true;
     QPushButton* mutePill_ = nullptr;
     GhostButton* settingsBtn_ = nullptr;
     CommandBar* composer_ = nullptr;

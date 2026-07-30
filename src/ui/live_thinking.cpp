@@ -82,7 +82,7 @@ void LiveThinking::paintEvent(QPaintEvent*) {
     const qreal barW = width() - kLabelW - 8;
 
     QFont label = font();
-    label.setPixelSize(15);
+    label.setPixelSize(17);
 
     for (int i = 0; i < count; ++i) {
         const qreal cy = i * kRowH + kRowH / 2.0;

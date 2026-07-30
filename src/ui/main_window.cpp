@@ -381,6 +381,19 @@ QWidget* MainWindow::buildTitleBar() {
     });
     layout->addWidget(stopBtn_);
 
+    voicePill_ = new QPushButton(QStringLiteral("Voice"));
+    voicePill_->setObjectName(QStringLiteral("mutePill"));
+    voicePill_->setCheckable(true);
+    voicePill_->setCursor(Qt::PointingHandCursor);
+    voicePill_->setFixedHeight(26);
+    voicePill_->setToolTip(QStringLiteral("Speak answers aloud, or reply in text only"));
+    connect(voicePill_, &QPushButton::toggled, this, [this](bool silent) {
+        speakReplies_ = !silent;
+        voicePill_->setText(silent ? QStringLiteral("Text") : QStringLiteral("Voice"));
+        if (silent && speaker_) speaker_->stop();
+    });
+    layout->addWidget(voicePill_);
+
     mutePill_ = new QPushButton(QStringLiteral("Mute"));
     mutePill_->setObjectName(QStringLiteral("mutePill"));
     mutePill_->setCheckable(true);
@@ -600,6 +613,10 @@ void MainWindow::deliver(const QString& reply, const QString& action, bool acted
 }
 
 void MainWindow::say(const QString& text) {
+    // Answers are always on screen; speaking them is the part you can switch
+    // off. Somewhere quiet, or next to someone, a spoken reply is the wrong
+    // default -- and until now there was no way to have her answer silently.
+    if (!speakReplies_) return;
     if (!speaker_ || !listener_) return;
     listener_->set_speaking(true);
     speaker_->speak(text.toStdString(), [this](bool) {

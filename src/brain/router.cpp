@@ -227,6 +227,9 @@ const char* kIntentPromptText =
     "take_note      メモを取りたい、書き留めてほしい。argument はメモの内容\n"
     "read_notes     最近のメモを読み上げてほしい\n"
     "open_notes     メモ帳やメモの画面を開きたい\n"
+    "list_reminders 予定しているリマインダーを確認したい\n"
+    "delete_note    メモを削除したい。argument は消したいメモの内容\n"
+    "cancel_reminder リマインダーを取り消したい。argument は対象。全部なら空文字\n"
     "search_notes   メモを探したい。argument は探す言葉\n"
     "ask_notes      メモの内容について質問したい、要約してほしい、まとめてほしい。"
     "argument は質問。要約だけなら空文字\n"
@@ -249,7 +252,8 @@ const std::vector<std::string>& action_names() {
         "clipboard", "media_playpause", "media_next", "media_previous", "lock_screen",
         "find_file", "open_folder", "open_file", "call", "video_call", "click_button",
         "type_text", "menu_item", "what_is_on_screen", "take_note", "read_notes",
-        "search_notes", "ask_notes", "open_notes", "chat"};
+        "search_notes", "ask_notes", "open_notes", "list_reminders",
+        "cancel_reminder", "delete_note", "chat"};
     return kNames;
 }
 
@@ -347,6 +351,34 @@ Reply Router::route(const std::string& utterance) {
 Reply Router::rules(const std::string& utterance, const std::string& lower) {
     Reply reply;
 
+    // --- reminders you already set -----------------------------------------
+    // Ahead of the parser below: "リマインダーを教えて" is a question about the
+    // ones that exist, and the parser would read it as a request for a new one.
+    if ((has(utterance, "リマインダー") || has(utterance, "アラーム") ||
+         has(lower, "reminder")) &&
+        (has(utterance, "取り消") || has(utterance, "キャンセル") ||
+         has(utterance, "消して") || has(utterance, "やめて") ||
+         has(lower, "cancel") || has(lower, "delete"))) {
+        const std::string which = strip_words(
+            utterance, {"のリマインダーを取り消して", "リマインダーを取り消して",
+                        "リマインダーをキャンセル", "リマインダーを消して",
+                        "リマインダーをやめて", "リマインダー", "を取り消して",
+                        "取り消して", "キャンセルして", "を消して", "消して",
+                        "cancel the reminder", "cancel reminder", "cancel ",
+                        "delete the reminder", "reminder", "please"});
+        const std::string gone = tools::cancel_reminder(strip_trailing_particle(which));
+        reply = {gone.empty() ? "取り消せるリマインダーがありませんでした。"
+                              : "「" + gone + "」のリマインダーを取り消しました。",
+                 "cancel_reminder", gone, !gone.empty()};
+        return reply;
+    }
+    if ((has(utterance, "リマインダー") || has(lower, "reminder")) &&
+        (has(utterance, "は？") || has(utterance, "教えて") || has(utterance, "ある") ||
+         has(utterance, "確認") || has(utterance, "何") || has(lower, "what") ||
+         has(lower, "list") || has(lower, "show"))) {
+        return speak_reminders();
+    }
+
     // --- reminders, first: they contain other keywords ("5分後に音楽") -------
     if (auto reminder = tools::parse_reminder(utterance)) {
         const auto seconds = reminder->delay.count();
@@ -428,6 +460,32 @@ Reply Router::rules(const std::string& utterance, const std::string& lower) {
                         "メモ", "summarise my notes", "summarize my notes", "my notes",
                         "in my notes", "notes", "note", "please"});
         return think_about_notes(question);
+    }
+
+    // Deleting one. Ahead of the writing rule, which would otherwise take
+    // "メモを消して" for an instruction to write down the word 消して.
+    if (mentions_notes &&
+        (has(utterance, "削除") || has(utterance, "消して") || has(utterance, "捨てて") ||
+         has(lower, "delete") || has(lower, "remove"))) {
+        const std::string which = strip_trailing_particle(strip_words(
+            utterance, {"のメモを削除して", "のメモを消して", "メモを削除して",
+                        "メモを消して", "メモを捨てて", "メモ", "を削除して", "削除して",
+                        "を消して", "消して", "を捨てて", "捨てて",
+                        "delete the note about ", "delete the note ", "delete note ",
+                        "remove the note ", "note", "please"}));
+        // Without a subject the newest note is the one meant -- it is the one
+        // just dictated, and the only one a speaker can refer to by memory.
+        const auto found = which.empty() ? notes_.all(1) : notes_.search(which, 1);
+        if (found.empty()) {
+            reply = {which.empty() ? "消せるメモがありません。"
+                                   : which + "というメモは見つかりませんでした。",
+                     "delete_note", which, false};
+            return reply;
+        }
+        notes_.remove(found.front().id);
+        reply = {"「" + found.front().title + "」を削除しました。", "delete_note",
+                 found.front().id, true};
+        return reply;
     }
 
     // Reading them back: titles only, no model call.
@@ -991,6 +1049,25 @@ Reply Router::execute_step(const std::string& action, const std::string& argumen
         reply = {note.valid() ? "メモしました。" : "メモを書けませんでした。", "take_note",
                  note.id, note.valid()};
         return reply;
+    } else if (action == "delete_note" && !argument.empty()) {
+        const auto found = notes_.search(argument, 1);
+        if (found.empty()) {
+            reply = {argument + "というメモは見つかりませんでした。", "delete_note",
+                     argument, false};
+            return reply;
+        }
+        notes_.remove(found.front().id);
+        reply = {"「" + found.front().title + "」を削除しました。", "delete_note",
+                 found.front().id, true};
+        return reply;
+    } else if (action == "list_reminders") {
+        return speak_reminders();
+    } else if (action == "cancel_reminder") {
+        const std::string gone = tools::cancel_reminder(argument);
+        reply = {gone.empty() ? "取り消せるリマインダーがありませんでした。"
+                              : "「" + gone + "」のリマインダーを取り消しました。",
+                 "cancel_reminder", gone, !gone.empty()};
+        return reply;
     } else if (action == "open_notes") {
         reply = {"メモを開きます。", "open_notes", "", true};
         return reply;
@@ -1179,6 +1256,25 @@ Reply Router::think_about_notes(const std::string& question) {
     reply.text = result.text;
     reply.detail = std::to_string(relevant.size()) + " notes";
     remember(question.empty() ? "メモを要約して" : question, reply.text);
+    return reply;
+}
+
+// Reads back what is still waiting to go off.
+Reply Router::speak_reminders() {
+    Reply reply;
+    reply.action = "list_reminders";
+    const auto pending = tools::pending_reminders();
+    if (pending.empty()) {
+        reply.text = "予定しているリマインダーはありません。";
+        return reply;
+    }
+    reply.text = pending.size() == 1
+                     ? "リマインダーがひとつあります。"
+                     : std::to_string(pending.size()) + "件あります。";
+    for (const auto& item : pending) {
+        reply.text += item.when + "に「" + item.what + "」。";
+    }
+    reply.detail = std::to_string(pending.size());
     return reply;
 }
 

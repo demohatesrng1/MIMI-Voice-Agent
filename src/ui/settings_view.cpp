@@ -1,6 +1,7 @@
 #include "ui/settings_view.hpp"
 
 #include "brain/accessibility.hpp"
+#include "brain/account.hpp"
 #include "brain/notes.hpp"
 #include "core/paths.hpp"
 #include "ui/theme.hpp"
@@ -74,6 +75,17 @@ SettingsView::SettingsView(QWidget* parent) : QWidget(parent) {
     blurb->setWordWrap(true);
     blurb->setStyleSheet(QStringLiteral("color: %1;").arg(theme::kDim.name()));
     column->addWidget(blurb);
+    column->addSpacing(28);
+
+    // Who is signed in, and the way out. Signing in was previously a one-way
+    // door: no way to see which account was in use, and no way to leave it.
+    addHeading(column, QStringLiteral("ACCOUNT"));
+    account_ = addRow(column, QStringLiteral("Signed in"),
+                      QStringLiteral("Stored on this Mac. Signing out does not delete "
+                                     "your notes or memory."),
+                      QStringLiteral("Sign out"), [this] {
+                          if (brain::Accounts().forget()) refresh();
+                      });
     column->addSpacing(28);
 
     addHeading(column, QStringLiteral("PERMISSIONS"));
@@ -160,8 +172,10 @@ SettingsView::Row SettingsView::addRow(QVBoxLayout* into, const QString& name,
     QFont detailFont = detail->font();
     detailFont.setPointSize(detailFont.pointSize() - 1);
     detail->setFont(detailFont);
+    // The line explaining what a permission is for is the reason the row
+    // exists; it should not be quieter than the label above it by much.
     detail->setStyleSheet(QStringLiteral("color: %1; background: transparent;")
-                              .arg(theme::kFaint.name()));
+                              .arg(theme::kDim.name()));
     left->addWidget(detail);
     row->addLayout(left, 1);
 
@@ -204,6 +218,13 @@ void SettingsView::refresh() {
         row.value->setStyleSheet(QStringLiteral("color: %1; background: transparent;")
                                      .arg(theme::kDim.name()));
     };
+
+    const brain::Account account = brain::Accounts().load();
+    plain(account_, account.valid()
+                        ? QString::fromStdString(account.preferred.empty()
+                                                     ? account.email
+                                                     : account.preferred)
+                        : QStringLiteral("Not signed in"));
 
     apply(accessibility_, state_for(brain::ax::has_permission()));
     apply(microphone_, state_for(brain::ax::microphone_access()));

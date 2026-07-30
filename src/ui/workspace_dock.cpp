@@ -31,10 +31,13 @@ struct ToolSet {
 // context asks for; the point of the dock is that the *set* changes under you.
 const ToolSet kGeneral{
     "SUGGESTED",
-    {{{"What time is it?", "今何時ですか"},
-      {"Battery status", "バッテリーはどのくらい"},
-      {"Take a screenshot", "スクリーンショットを撮って"},
-      {"Lock the screen", "画面をロックして"}}}};
+    // Things only she can do. Asking the time or the battery is a worse version
+    // of glancing at the menu bar, so suggesting it wastes the one row that
+    // teaches people what she is for.
+    {{{"Take a note", "メモして"},
+      {"What's in my notes?", "メモを要約して"},
+      {"Remind me in 20 minutes", "20分後に教えて"},
+      {"What's on screen?", "画面に何がある"}}}};
 
 const ToolSet kCoding{
     "CODING",

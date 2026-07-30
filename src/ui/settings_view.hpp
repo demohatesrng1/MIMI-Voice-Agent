@@ -41,6 +41,7 @@ private:
                const QString& action, std::function<void()> on_action);
     void addHeading(QVBoxLayout* into, const QString& text);
 
+    Row account_;
     Row accessibility_;
     Row microphone_;
     Row contacts_;

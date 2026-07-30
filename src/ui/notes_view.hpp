@@ -5,7 +5,9 @@
 #include <QWidget>
 
 class QLabel;
+class QLineEdit;
 class QListWidget;
+class QVBoxLayout;
 class QTextEdit;
 
 namespace mimi::ui {
@@ -34,8 +36,13 @@ private:
     void addNote();
     void deleteSelected();
 
+    void refreshReminders();
+
     brain::Notes notes_;
     QListWidget* list_ = nullptr;
+    QLineEdit* filter_ = nullptr;
+    QWidget* reminderPanel_ = nullptr;
+    QVBoxLayout* reminderRows_ = nullptr;
     QTextEdit* body_ = nullptr;
     QLabel* stamp_ = nullptr;
     QLabel* empty_ = nullptr;

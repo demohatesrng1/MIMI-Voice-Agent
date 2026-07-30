@@ -58,11 +58,11 @@ void ContextRibbon::paintEvent(QPaintEvent*) {
     painter.drawLine(0, 0, width(), 0);
 
     QFont caps = font();
-    caps.setPixelSize(12);
+    caps.setPixelSize(14);
     caps.setWeight(QFont::DemiBold);
     caps.setLetterSpacing(QFont::AbsoluteSpacing, 2.0);
     QFont value = font();
-    value.setPixelSize(14);
+    value.setPixelSize(16);
     value.setWeight(QFont::DemiBold);
 
     // Left: what she is looking at. Blank until something real is set, rather

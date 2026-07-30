@@ -18,6 +18,7 @@
 #include "brain/tools.hpp"
 #include "core/log.hpp"
 
+#include <chrono>
 #include <cstdio>
 #include <fstream>
 #include <iterator>
@@ -101,6 +102,13 @@ void test_folders() {
 void test_routing(Router& router) {
     std::puts("\nrouting");
 
+    // "会議は何時からだっけ" is only a question for the notes if a note answers
+    // it. Without this the case passed on whatever an earlier run happened to
+    // leave behind, and failed the moment the suite ran against a clean
+    // directory.
+    Notes notes;
+    const Note fixture = notes.add("会議は午後3時から、資料は木曜まで");
+
     struct Case {
         const char* utterance;
         const char* action;
@@ -143,6 +151,7 @@ void test_routing(Router& router) {
         const Reply reply = router.route(c.utterance);
         equal(reply.action, c.action, c.why);
     }
+    if (fixture.valid()) notes.remove(fixture.id);
 }
 
 // --- notes ------------------------------------------------------------------
@@ -162,6 +171,12 @@ void test_notes() {
     check(notes.relevant("まったく無関係な話題です", 3).empty(),
           "does not match an unrelated question");
 
+    // Deleting by voice needs the newest note when nothing is named, since
+    // that is the only one a speaker can refer to from memory.
+    const Note second = notes.add("消される予定のメモ");
+    check(notes.all(1).front().id == second.id, "newest note is first");
+    check(notes.remove(second.id), "removes a note");
+
     if (!written.id.empty()) notes.remove(written.id);
 }
 
@@ -177,6 +192,24 @@ void test_reminders() {
     equal(tools::reminder_announcement("ゴミを出して"), "ゴミを出して、という時間です。",
           "an instruction is announced as one");
     check(!tools::reminder_announcement("").empty(), "an empty reminder still says something");
+
+    // Setting one and never being able to see it is what made the feature
+    // untrustworthy; listing and cancelling are the other half of it.
+    tools::set_rehearsing(false);  // these need to actually touch the file
+    while (!tools::cancel_reminder().empty()) {}  // start clean
+
+    tools::schedule(std::chrono::seconds{600}, "テスト予定", {});
+    auto pending = tools::pending_reminders();
+    check(pending.size() == 1, "a scheduled reminder shows as pending");
+    if (!pending.empty()) {
+        equal(pending.front().what, "テスト予定", "keeps what it is about");
+        check(!pending.front().when.empty(), "says how long is left");
+    }
+
+    equal(tools::cancel_reminder("テスト"), "テスト予定", "cancels by partial match");
+    check(tools::pending_reminders().empty(), "cancelling removes it");
+    check(tools::cancel_reminder("anything").empty(), "cancelling nothing is safe");
+    tools::set_rehearsing(true);
 }
 
 // --- accounts ---------------------------------------------------------------

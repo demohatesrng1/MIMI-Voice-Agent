@@ -1,10 +1,12 @@
 #include "ui/notes_view.hpp"
 
 #include "ui/icons.hpp"
+#include "brain/tools.hpp"
 #include "ui/theme.hpp"
 
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QLineEdit>
 #include <QListWidget>
 #include <QPushButton>
 #include <QTextEdit>
@@ -16,15 +18,23 @@ namespace {
 
 QString stylesheet() {
     const auto hex = [](const QColor& colour) { return colour.name(QColor::HexRgb); };
+    // Selection is a raised row, not a coloured one. A saturated fill behind
+    // whichever note happens to be open is the loudest thing on the page, and
+    // it is only telling you where the cursor is.
     return QStringLiteral(
-               "QListWidget { background: %1; border: none; border-radius: 12px;"
-               "  padding: 6px; color: %2; }"
-               "QListWidget::item { padding: 11px 12px; border-radius: 8px; }"
+               "QListWidget { background: %1; border: 1px solid %5;"
+               "  border-radius: 10px; padding: 5px; color: %2; }"
+               "QListWidget::item { padding: 11px 12px; border-radius: 6px; }"
+               "QListWidget::item:hover { background: %6; }"
                "QListWidget::item:selected { background: %3; color: %4; }"
-               "QTextEdit { background: %1; border: none; border-radius: 12px;"
-               "  padding: 16px; color: %2; selection-background-color: %3; }")
-        .arg(hex(theme::kLayer1), hex(theme::kInk), hex(theme::kAccentDeep),
-             hex(theme::kInk));
+               "QTextEdit { background: %1; border: 1px solid %5; border-radius: 10px;"
+               "  padding: 16px; color: %2; selection-background-color: %7; }"
+               "QPushButton { background: %3; border: 1px solid %5; border-radius: 7px;"
+               "  color: %2; padding: 8px 14px; font-size: 16px; }"
+               "QPushButton:hover { background: %6; border: 1px solid %8; }")
+        .arg(hex(theme::kLayer1), hex(theme::kInk), hex(theme::kLayer2),
+             hex(theme::kInk), hex(theme::kLine), hex(theme::kLayer2),
+             hex(theme::kAccentDeep), hex(theme::kAccent));
 }
 
 }  // namespace
@@ -41,9 +51,19 @@ NotesView::NotesView(QWidget* parent) : QWidget(parent) {
     auto* heading = new QLabel(QStringLiteral("Notes"));
     // Through the stylesheet: the application sheet sets a size on QWidget, and
     // that beats setFont().
-    heading->setStyleSheet(QStringLiteral("color: %1; font-size: 22px; font-weight: 600;")
+    heading->setStyleSheet(QStringLiteral("color: %1; font-size: 24px; font-weight: 600;")
                                .arg(theme::kInk.name()));
     left->addWidget(heading);
+
+    // Filtering the index. With twenty notes in a sidebar, hunting by eye is
+    // the obvious thing the page was missing.
+    filter_ = new QLineEdit;
+    filter_->setPlaceholderText(QStringLiteral("Filter notes"));
+    filter_->setFixedWidth(320);
+    filter_->setFixedHeight(34);
+    filter_->setClearButtonEnabled(true);
+    connect(filter_, &QLineEdit::textChanged, this, [this] { refresh(); });
+    left->addWidget(filter_);
 
     list_ = new QListWidget;
     list_->setFixedWidth(320);
@@ -63,6 +83,17 @@ NotesView::NotesView(QWidget* parent) : QWidget(parent) {
     connect(remove, &QPushButton::clicked, this, &NotesView::deleteSelected);
     buttons->addWidget(remove);
     left->addLayout(buttons);
+
+    // Reminders waiting to go off. They live here because this is the page for
+    // things she is holding on your behalf -- and until now a reminder you set
+    // was invisible, with no way to confirm it or call it off.
+    reminderPanel_ = new QWidget;
+    reminderPanel_->setFixedWidth(320);
+    reminderRows_ = new QVBoxLayout(reminderPanel_);
+    reminderRows_->setContentsMargins(0, 14, 0, 0);
+    reminderRows_->setSpacing(6);
+    left->addWidget(reminderPanel_);
+
     layout->addLayout(left);
 
     // --- the note ------------------------------------------------------------
@@ -105,7 +136,9 @@ void NotesView::refresh() {
     loading_ = true;
     list_->clear();
 
-    const auto notes = notes_.all();
+    const QString needle = filter_ == nullptr ? QString() : filter_->text().trimmed();
+    const auto notes =
+        needle.isEmpty() ? notes_.all() : notes_.search(needle.toStdString(), 0);
     for (const auto& note : notes) {
         auto* item = new QListWidgetItem(QString::fromStdString(note.title));
         item->setData(Qt::UserRole, QString::fromStdString(note.id));
@@ -132,6 +165,70 @@ void NotesView::refresh() {
         current_.clear();
     }
     Q_EMIT noteCountChanged(static_cast<int>(notes.size()));
+    refreshReminders();
+}
+
+void NotesView::refreshReminders() {
+    if (reminderRows_ == nullptr) return;
+    QLayoutItem* item = nullptr;
+    while ((item = reminderRows_->takeAt(0)) != nullptr) {
+        if (QWidget* w = item->widget()) w->deleteLater();
+        delete item;
+    }
+
+    const auto pending = brain::tools::pending_reminders();
+    reminderPanel_->setVisible(!pending.empty());
+    if (pending.empty()) return;
+
+    auto* heading = new QLabel(QStringLiteral("REMINDERS"));
+    heading->setStyleSheet(
+        QStringLiteral("color: %1; font-size: 11px; font-weight: 700;"
+                       "letter-spacing: 1.4px; background: transparent;")
+            .arg(theme::kFaint.name()));
+    reminderRows_->addWidget(heading);
+
+    for (const auto& reminder : pending) {
+        auto* row = new QWidget;
+        // Scoped by object name: an unqualified rule on a container is
+        // inherited by its children, so the label inside drew its own border
+        // too and every row came out doubled.
+        row->setObjectName(QStringLiteral("reminderRow"));
+        row->setStyleSheet(QStringLiteral("#reminderRow { background: %1;"
+                                          "  border: 1px solid %2; border-radius: 8px; }")
+                               .arg(theme::kLayer1.name(), theme::kLine.name()));
+        auto* line = new QHBoxLayout(row);
+        line->setContentsMargins(12, 8, 8, 8);
+        line->setSpacing(8);
+
+        auto* when = new QLabel(QString::fromStdString(reminder.when));
+        when->setStyleSheet(QStringLiteral("color: %1; font-size: 13px;"
+                                           "background: transparent; border: none;")
+                                .arg(theme::kAccentSoft.name()));
+        line->addWidget(when);
+
+        auto* what = new QLabel(QString::fromStdString(reminder.what));
+        what->setStyleSheet(QStringLiteral("color: %1; font-size: 14px;"
+                                           "background: transparent; border: none;")
+                                .arg(theme::kInk.name()));
+        line->addWidget(what, 1);
+
+        auto* drop = new QPushButton(QStringLiteral("✕"));
+        drop->setCursor(Qt::PointingHandCursor);
+        drop->setFixedSize(22, 22);
+        drop->setToolTip(QStringLiteral("Cancel this reminder"));
+        drop->setStyleSheet(
+            QStringLiteral("QPushButton { background: transparent; border: none;"
+                           "  color: %1; font-size: 13px; }"
+                           "QPushButton:hover { color: %2; }")
+                .arg(theme::kFaint.name(), theme::kError.name()));
+        const std::string what_text = reminder.what;
+        connect(drop, &QPushButton::clicked, this, [this, what_text] {
+            brain::tools::cancel_reminder(what_text);
+            refreshReminders();
+        });
+        line->addWidget(drop);
+        reminderRows_->addWidget(row);
+    }
 }
 
 void NotesView::showSelected() {

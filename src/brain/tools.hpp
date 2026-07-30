@@ -1,6 +1,7 @@
 #pragma once
 
 #include <chrono>
+#include <cstdint>
 #include <functional>
 #include <optional>
 #include <string>
@@ -177,6 +178,24 @@ std::optional<Reminder> parse_reminder(const std::string& text);
 // is persisted so it can be restored.
 void schedule(std::chrono::seconds delay, std::string text,
               std::function<void(const std::string&)> on_fire);
+
+// A reminder waiting to go off.
+struct Pending {
+    std::int64_t due = 0;  // unix seconds
+    std::string what;
+    std::string when;      // "in 12 minutes", for reading back
+};
+
+// Everything still waiting, soonest first.
+//
+// Setting a reminder and then having no way to see it is the gap that makes
+// the feature untrustworthy: there is no way to confirm it registered, and no
+// way to call one off.
+std::vector<Pending> pending_reminders();
+
+// Cancels the reminder whose text best matches, or the soonest one when `what`
+// is empty. Returns what was cancelled, or empty if nothing matched.
+std::string cancel_reminder(const std::string& what = {});
 
 // Re-arms every reminder saved by schedule() that has not fired yet.
 //

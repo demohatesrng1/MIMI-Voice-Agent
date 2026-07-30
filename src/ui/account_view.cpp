@@ -28,7 +28,7 @@ QLabel* heading(const QString& text) {
     auto* label = new QLabel(text);
     label->setAlignment(Qt::AlignCenter);
     label->setWordWrap(true);
-    label->setStyleSheet(QStringLiteral("color: %1; font-size: 34px; font-weight: 700;"
+    label->setStyleSheet(QStringLiteral("color: %1; font-size: 36px; font-weight: 700;"
                                        "letter-spacing: -0.4px;")
                              .arg(theme::kInk.name()));
     return label;
@@ -38,7 +38,7 @@ QLabel* subdued(const QString& text) {
     auto* label = new QLabel(text);
     label->setAlignment(Qt::AlignCenter);
     label->setWordWrap(true);
-    label->setStyleSheet(QStringLiteral("color: %1; font-size: 15px;")
+    label->setStyleSheet(QStringLiteral("color: %1; font-size: 17px;")
                              .arg(theme::kDim.name()));
     return label;
 }
@@ -86,7 +86,7 @@ QLineEdit* field(const QString& placeholder, bool secret = false) {
     if (secret) edit->setEchoMode(QLineEdit::Password);
     edit->setStyleSheet(
         QStringLiteral("QLineEdit { background: %1; border: 1px solid rgba(255,255,255,0.07);"
-                       "  border-radius: 9px; color: %2; padding: 0 14px; font-size: 14px; }"
+                       "  border-radius: 9px; color: %2; padding: 0 14px; font-size: 16px; }"
                        "QLineEdit:focus { border: 1px solid %3; }")
             .arg(theme::kLayer1.name(), theme::kInk.name(), theme::kAccentDeep.name()));
     return edit;
@@ -97,7 +97,7 @@ void style_primary(QPushButton* button) {
     button->setFixedHeight(42);
     button->setStyleSheet(
         QStringLiteral("QPushButton { background: %1; border: none; border-radius: 9px;"
-                       "  color: #ffffff; font-size: 14px; font-weight: 600; }"
+                       "  color: #ffffff; font-size: 16px; font-weight: 600; }"
                        "QPushButton:hover { background: %2; }")
             .arg(theme::kAccentDeep.name(), theme::kAccent.name()));
 }
@@ -107,7 +107,7 @@ void style_quiet(QPushButton* button) {
     button->setFixedHeight(42);
     button->setStyleSheet(
         QStringLiteral("QPushButton { background: %1; border: 1px solid rgba(255,255,255,0.07);"
-                       "  border-radius: 9px; color: %2; font-size: 14px; font-weight: 500; }"
+                       "  border-radius: 9px; color: %2; font-size: 16px; font-weight: 500; }"
                        "QPushButton:hover { border: 1px solid %3; color: %4; }")
             .arg(theme::kLayer1.name(), theme::kDim.name(), theme::kAccentDeep.name(),
                  theme::kInk.name()));
@@ -122,7 +122,7 @@ QPushButton* back_button() {
     button->setFixedHeight(32);
     button->setStyleSheet(
         QStringLiteral("QPushButton { background: transparent; border: none; color: %1;"
-                       "  font-size: 14px; font-weight: 500; text-align: left;"
+                       "  font-size: 16px; font-weight: 500; text-align: left;"
                        "  padding: 0 8px; }"
                        "QPushButton:hover { color: %2; }")
             .arg(theme::kFaint.name(), theme::kInk.name()));
@@ -212,11 +212,11 @@ void AccountView::buildWelcome() {
         row->setSpacing(9);
         auto* tick = new QLabel(QStringLiteral("✓"));
         tick->setStyleSheet(
-            QStringLiteral("color: %1; font-size: 13px;").arg(theme::kAccent.name()));
+            QStringLiteral("color: %1; font-size: 15px;").arg(theme::kAccent.name()));
         row->addWidget(tick);
         auto* text = new QLabel(line);
         text->setStyleSheet(
-            QStringLiteral("color: %1; font-size: 13px;").arg(theme::kFaint.name()));
+            QStringLiteral("color: %1; font-size: 15px;").arg(theme::kFaint.name()));
         row->addWidget(text);
         row->addStretch(1);
         auto* holder = new QWidget;
@@ -255,7 +255,7 @@ void AccountView::buildSignUp() {
 
     progress_ = subdued(QString());
     progress_->setStyleSheet(
-        QStringLiteral("color: %1; font-size: 10px; font-weight: 600; letter-spacing: 1.4px;")
+        QStringLiteral("color: %1; font-size: 12px; font-weight: 600; letter-spacing: 1.4px;")
             .arg(theme::kFaint.name()));
     column->addWidget(progress_);
     column->addSpacing(14);

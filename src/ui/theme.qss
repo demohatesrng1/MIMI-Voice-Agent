@@ -1,17 +1,19 @@
-/* Mimi — graphite and one electric blue.
-   Depth over outlines: elevation comes from layered fills, light and shadow,
-   never from borders. The accent is spent only on focus, state, and her.
-   Type: SF Pro Display for display sizes, SF Pro Text for UI. */
+/* Mimi — neutral grey, with structure carried by hairlines.
+   The earlier theme built depth out of light: near-black surfaces, no borders,
+   and a glow wherever an edge was needed. On a real display that reads as haze.
+   Surfaces here sit well off black so a 1px line is actually visible, and the
+   accent is spent on one thing at a time — the active tab, a focused field —
+   rather than on decoration. */
 
 QWidget {
   background: transparent;
-  color: #f2f5f9;
+  color: #f2f2f4;
   /* The system UI face, named explicitly. Nothing set a family at all before,
      so Qt fell back to its own default and none of the weights or the spacing
      matched what the rest of macOS draws. ".AppleSystemUIFont" is the SF the
      system itself uses; the rest are there in case it is ever unavailable. */
   font-family: ".AppleSystemUIFont", "SF Pro Text", "Helvetica Neue", sans-serif;
-  font-size: 17px;
+  font-size: 19px;
 }
 
 QLabel { background: transparent; }
@@ -25,28 +27,28 @@ QLabel { background: transparent; }
    bar" means. Any distinct band here re-creates stacked web chrome. */
 #titleBar {
   background: transparent;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.055);
+  border-bottom: 1px solid #303033;
 }
 
 /* Her name, set like a product name rather than a label: near-white, tight,
-   slightly tracked. The old value was a blue-grey (#aeb6c4) borrowed from the
+   slightly tracked. The old value was a blue-grey (#f2f2f4) borrowed from the
    accent ramp, which read as a disabled control sitting next to real ones. */
 #wordmark {
-  font-size: 16.5px;
+  font-size: 18.5px;
   font-weight: 600;
   letter-spacing: 0.2px;
-  color: #eceff4;
+  color: #f2f2f4;
 }
 
 /* The hairline between her name and the places you can go. */
-#chromeRule { background: rgba(255, 255, 255, 0.10); }
+#chromeRule { background: #3a3a3e; }
 
 /* Status: a dot and a word, on the surface. No capsule -- a raised pill around
    two words is chrome around chrome, and it was the loudest thing in the bar. */
 #statusPill { background: transparent; }
-#statusDot  { font-size: 8px; color: #3d8bff; }
+#statusDot  { font-size: 8px; color: #3b82f6; }
 #statusText {
-  font-size: 15px;
+  font-size: 17px;
   font-weight: 500;
   letter-spacing: 0.2px;
   color: #7f8899;
@@ -59,7 +61,7 @@ QLabel { background: transparent; }
   border: none;
   border-radius: 5px;
   color: #7f8899;
-  font-size: 15px;
+  font-size: 17px;
   font-weight: 500;
   padding: 0px 10px;
 }
@@ -71,13 +73,13 @@ QLabel { background: transparent; }
   border: none;
   border-radius: 5px;
   color: #ff8a9a;
-  font-size: 15px;
+  font-size: 17px;
   font-weight: 600;
   padding: 0px 12px;
   margin-right: 6px;
 }
 #stopBtn:hover { background: rgba(255, 69, 96, 0.24); color: #ffb3bd; }
-#mutePill:hover   { background: rgba(255, 255, 255, 0.06); color: #eceff4; }
+#mutePill:hover   { background: rgba(255, 255, 255, 0.06); color: #f2f2f4; }
 #mutePill:checked { background: rgba(255, 69, 96, 0.13); color: #ff8a9a; }
 
 /* -------------------------------------------------------------------- home */
@@ -85,15 +87,17 @@ QLabel { background: transparent; }
 #home { background: transparent; }
 
 /* The single most important word on screen: what she is doing right now. */
+/* What she is doing, as a quiet label. It was set in the accent, which spends
+   the one colour in the palette on a caption that is always on screen. */
 #heroState {
-  font-size: 15px;
+  font-size: 17px;
   font-weight: 600;
   letter-spacing: 5px;
-  color: #4d9fff;
+  color: #cfcfd4;
 }
 
 #heroSaid {
-  font-size: 18px;
+  font-size: 20px;
   color: #6b7689;
   letter-spacing: 0.2px;
 }
@@ -102,10 +106,10 @@ QLabel { background: transparent; }
    type in the app by a clear margin. Display face, light weight: a headline,
    not a paragraph. */
 #heroReply {
-  font-size: 31px;
+  font-size: 33px;
   font-weight: 300;
   line-height: 150%;
-  color: #f2f5f9;
+  color: #f2f2f4;
 }
 
 /* ----------------------------------------------------------- workspace dock */
@@ -113,45 +117,45 @@ QLabel { background: transparent; }
 /* The context tag over the tools: quiet accent caps that read as a label, not
    a button, even though tapping it cycles the workspace. */
 #workspaceTag {
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 700;
   letter-spacing: 3px;
-  color: #4d9fff;
+  color: #a6a6ad;
 }
 
 /* --------------------------------------------------------------- canvas hint */
 
 #canvasHint {
-  font-size: 14px;
-  color: #515b6e;
+  font-size: 16px;
+  color: #a6a6ad;
   letter-spacing: 0.4px;
 }
 
 /* --------------------------------------------------------- shared headings */
 
 #sectionHead {
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 700;
   letter-spacing: 4px;
-  color: #4d9fff;
+  color: #609cf8;
 }
 
 #sectionLead {
-  font-size: 16px;
-  color: #8a94a6;
+  font-size: 18px;
+  color: #cfcfd4;
   line-height: 165%;
 }
 
 #groupHead {
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 600;
   letter-spacing: 2.5px;
-  color: #515b6e;
+  color: #a6a6ad;
 }
 
 #emptyState {
-  font-size: 16px;
-  color: #515b6e;
+  font-size: 18px;
+  color: #a6a6ad;
   line-height: 175%;
 }
 
@@ -170,9 +174,9 @@ QLabel { background: transparent; }
 #skillCard:hover   { background: rgba(255, 255, 255, 0.07); }
 #skillCard:pressed { background: rgba(61, 139, 255, 0.12); }
 
-#skillTitle  { font-size: 16px; font-weight: 600; color: #f2f5f9; }
-#skillPhrase { font-size: 15px; color: #8fc0ff; }
-#skillDetail { font-size: 14.5px; color: #515b6e; }
+#skillTitle  { font-size: 18px; font-weight: 600; color: #f2f2f4; }
+#skillPhrase { font-size: 17px; color: #93b8f8; }
+#skillDetail { font-size: 16.5px; color: #a6a6ad; }
 
 /* ---------------------------------------------------------------- composer */
 
@@ -180,9 +184,9 @@ QLabel { background: transparent; }
 QLineEdit#commandField {
   background: transparent;
   border: none;
-  color: #f2f5f9;
-  font-size: 18px;
-  selection-background-color: #1d4f94;
+  color: #f2f2f4;
+  font-size: 20px;
+  selection-background-color: #1e4ea8;
 }
 
 /* --------------------------------------------------------- command palette */
@@ -195,26 +199,26 @@ QLineEdit#commandField {
 QLineEdit#paletteField {
   background: transparent;
   border: none;
-  color: #f2f5f9;
-  font-size: 20px;
+  color: #f2f2f4;
+  font-size: 22px;
   padding: 16px 20px;
-  selection-background-color: #1d4f94;
+  selection-background-color: #1e4ea8;
 }
 QListWidget#paletteList {
   background: transparent;
   border: none;
   outline: none;
   padding: 6px 8px;
-  font-size: 16px;
+  font-size: 18px;
 }
 QListWidget#paletteList::item {
-  color: #aeb6c4;
+  color: #f2f2f4;
   padding: 9px 12px;
   border-radius: 8px;
 }
 QListWidget#paletteList::item:selected {
   background: rgba(61, 139, 255, 0.16);
-  color: #f2f5f9;
+  color: #f2f2f4;
 }
 
 /* ------------------------------------------------------------- scrollbars */
@@ -234,10 +238,10 @@ QScrollBar::add-line, QScrollBar::sub-line { height: 0; }
 QScrollBar::add-page, QScrollBar::sub-page { background: transparent; }
 
 QToolTip {
-  background: #161a23;
+  background: #2b2b2e;
   color: #d7dfe9;
   border: none;
   border-radius: 6px;
   padding: 6px 10px;
-  font-size: 15px;
+  font-size: 17px;
 }
