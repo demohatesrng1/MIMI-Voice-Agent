@@ -10,10 +10,8 @@
 // and gets out of the way, and the chrome becomes glass floating on top of it
 // rather than boxes carved into it.
 //
-// Two accents, from the fruit: the pink of the flesh carries her and everything
-// active, the green of the rind is reserved for one thing only -- that she is
-// hearing you right now. Two accents only work when the second one is that
-// disciplined; the moment green means several things it stops meaning any.
+// Two accents, from the fruit: watermelon (#ff4d6d) carries everything active,
+// and rind green means one thing only -- she is hearing you right now.
 namespace mimi::ui::theme {
 
 // The stage. Near-black and very slightly cool, because a warm character on a
@@ -24,8 +22,8 @@ namespace mimi::ui::theme {
 // page of panels. That was right for a page of panels. With a lit figure as the
 // subject, the same ramp is a grey box around her -- so the ground drops and
 // the panels come back up as glass instead.
-inline const QColor kVoid{0x0e, 0x0f, 0x10};      // stage
-inline const QColor kLayer0{0x13, 0x14, 0x16};    // window surface
+inline const QColor kVoid{0x0a, 0x0a, 0x12};      // the cosmic void. static, always
+inline const QColor kLayer0{0x0a, 0x0a, 0x12};    // window surface -- the same ground
 inline const QColor kLayer1{0x1a, 0x1b, 0x1e};    // panels
 inline const QColor kLayer2{0x21, 0x23, 0x28};    // raised surfaces, cards
 
@@ -58,7 +56,7 @@ inline const QColor kFaint{0xa6, 0xa6, 0xad};     // tertiary -- quiet, not fain
 
 // The flesh. The active thing, a focused field, the thing being talked about,
 // and her own light. Not decoration.
-inline const QColor kAccent{0xff, 0x4d, 0x6d};      // the active thing
+inline const QColor kAccent{0xff, 0x4d, 0x6d};      // watermelon -- the active thing
 inline const QColor kAccentSoft{0xff, 0x8f, 0xa3};  // on-accent detail
 inline const QColor kAccentDeep{0xc2, 0x18, 0x3c};  // pressed, filled buttons
 inline const QColor kAccentGlow{0xff, 0x6b, 0x85};  // ambient light
@@ -66,7 +64,7 @@ inline const QColor kAccentGlow{0xff, 0x6b, 0x85};  // ambient light
 // The rind. One meaning only: she is hearing you right now. Nothing else in
 // the app is allowed to be green, which is what lets it be read at a glance
 // from across a desk.
-inline const QColor kLive{0x3d, 0xdc, 0x84};
+inline const QColor kLive{0x3d, 0xdc, 0x84};   // rind green -- she is hearing you
 inline const QColor kLiveDeep{0x1f, 0x8a, 0x50};
 
 // Reserved. Never decorative -- only for things that genuinely went wrong.

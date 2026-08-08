@@ -1003,6 +1003,19 @@ Reply Router::classify_then_route(const std::string& utterance) {
 Reply Router::execute_step(const std::string& action, const std::string& argument) {
     Reply reply;
     if (action == "open_site" && !argument.empty()) {
+        // Look on the Mac before looking on the web.
+        //
+        // "Open Spotify" means the application when it is installed, and the
+        // classifier cannot know what is installed -- so it guesses, and half
+        // the time it guesses open_site and she types the name into a browser
+        // while the real app sits in /Applications. resolve_app_name() only
+        // answers for apps that are actually there, so this diverts exactly the
+        // cases that should be diverted and nothing else.
+        if (const std::string app = tools::resolve_app_name(argument);
+            !app.empty() && tools::open_app(app)) {
+            reply = {app + "を起動します。", "launch_app", app, true};
+            return reply;
+        }
         const std::string url = tools::url_for_site(argument);
         if (tools::open_url(url)) {
             reply = {argument + "を開きます。", "open_site", url, true};

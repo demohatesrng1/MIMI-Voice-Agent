@@ -39,6 +39,9 @@ public:
     ~MainWindow() override;
 
     void startVoice();
+    // The window has exactly two sizes: this one, and full screen.
+    void applyFixedSize();
+    void toggleFullScreen();
     // Native title-bar treatment. Must run after show(), which is when a real
     // NSWindow exists to configure.
     void applyNativeChrome();
@@ -88,6 +91,7 @@ private:
     AmbientAudio audio_;
 
     QLabel* statusDot_ = nullptr;
+    QWidget* presenceDot_ = nullptr;
     QLabel* statusText_ = nullptr;
     GhostButton* navHome_ = nullptr;
     GhostButton* navTimeline_ = nullptr;

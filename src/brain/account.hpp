@@ -25,6 +25,7 @@ struct Account {
     std::string username;
     std::string name;       // their real name
     std::string preferred;  // what she should actually call them
+    std::string face;       // which portrait she wears; see ui::faces
     bool valid() const noexcept { return !username.empty(); }
 };
 
@@ -40,7 +41,8 @@ public:
 
     // Creates the account. False if one already exists, or a field is empty.
     bool sign_up(const std::string& username, const std::string& password,
-                 const std::string& name, const std::string& preferred);
+                 const std::string& name, const std::string& preferred,
+                 const std::string& face = {});
 
     // Checks a password against the stored digest. Always false when no account
     // exists, so a missing file cannot be treated as a successful login.
@@ -54,6 +56,10 @@ public:
 
     // Changes what she calls them, and re-records the spoken cue.
     bool set_preferred(const std::string& preferred);
+
+    // Which of the bundled portraits she wears. Empty is valid and means "the
+    // default one", so this never has to be set for the app to work.
+    bool set_face(const std::string& face);
 
     // Deletes the account and everything derived from it.
     bool forget();

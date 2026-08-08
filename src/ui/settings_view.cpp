@@ -1,5 +1,8 @@
 #include "ui/settings_view.hpp"
 
+#include "ui/face_picker.hpp"
+#include "ui/faces.hpp"
+
 #include "brain/accessibility.hpp"
 #include "brain/account.hpp"
 #include "brain/notes.hpp"
@@ -86,6 +89,19 @@ SettingsView::SettingsView(QWidget* parent) : QWidget(parent) {
                       QStringLiteral("Sign out"), [this] {
                           if (brain::Accounts().forget()) refresh();
                       });
+    // Her face. The choice made in ten seconds during sign-up should never be
+    // permanent, and this is the same picker so it looks like the same decision.
+    addHeading(column, QStringLiteral("HER FACE"));
+    {
+        auto* picker = new FacePicker;
+        picker->setSelected(faces::currentId());
+        connect(picker, &FacePicker::chosen, this, [](const QString& id) {
+            // Written straight away: there is no Save button on this page, and
+            // the orb and the puck pick it up on their next repaint.
+            faces::choose(id);
+        });
+        column->addWidget(picker);
+    }
     column->addSpacing(28);
 
     addHeading(column, QStringLiteral("PERMISSIONS"));

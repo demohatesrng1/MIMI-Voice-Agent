@@ -21,6 +21,8 @@ namespace mimi::ui {
 // Nothing here reaches a network, and nothing asks for an email: the identity
 // is a username, because an app that promises to keep everything on the machine
 // has no business holding the one field that identifies you off it.
+class FacePicker;
+
 class AccountView : public QWidget {
     Q_OBJECT
 
@@ -38,7 +40,7 @@ protected:
 
 private:
     // The sign-up questions, in order.
-    enum Step { StepUsername = 0, StepPassword, StepName, StepCallYou };
+    enum Step { StepUsername = 0, StepPassword, StepName, StepFace, StepCallYou };
 
     void buildWelcome();
     void buildSignUp();
@@ -72,6 +74,8 @@ private:
     QString preferred_;
 
     // Sign-in
+    FacePicker* facePicker_ = nullptr;
+    QString face_;
     QLineEdit* signInUser_ = nullptr;
     QLineEdit* signInPassword_ = nullptr;
     QLabel* signInError_ = nullptr;

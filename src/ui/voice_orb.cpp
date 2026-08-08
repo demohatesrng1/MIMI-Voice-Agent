@@ -1,5 +1,6 @@
 #include "ui/voice_orb.hpp"
 
+#include "ui/faces.hpp"
 #include "ui/theme.hpp"
 
 #include <QBitmap>
@@ -100,7 +101,8 @@ const QPixmap& VoiceOrb::portrait(int diameter) const {
 
     // A clean full-bleed face crop cut straight from the master art, so no
     // trimming and only one downscale between the source and the screen.
-    QPixmap source(QStringLiteral(":/mimi_face.png"));
+    // Whichever portrait she is wearing, not a fixed asset -- see ui::faces.
+    QPixmap source(faces::square(faces::currentId(), 640));
     if (source.isNull()) {
         portrait_cache_ = QPixmap();
         portrait_size_ = diameter;

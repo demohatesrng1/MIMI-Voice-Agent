@@ -6,6 +6,7 @@
 
 #include <QWidget>
 
+#include <cmath>
 #include <string_view>
 
 namespace mimi::ui {
@@ -42,15 +43,15 @@ void adopt_native_titlebar(QWidget* widget) {
     // behind it. The design is one unified surface, so: no line.
     window.titlebarSeparatorStyle = NSTitlebarSeparatorStyleNone;
 
-    // The empty toolbar is not decoration -- unified-compact style is what
-    // grows the title-bar strip to toolbar height and vertically centres the
-    // traffic lights in it. Without it the lights hug the top-left corner of
-    // the taller custom bar. This is the same mechanism behind Electron's
-    // "hiddenInset" look. It draws nothing because the titlebar is
-    // transparent and it has no items.
-    if (window.toolbar == nil) {
-        window.toolbar = [[NSToolbar alloc] initWithIdentifier:@"mimi.window.chrome"];
-        window.toolbarStyle = NSWindowToolbarStyleUnifiedCompact;
+    // No toolbar. An empty unified-compact NSToolbar used to live here to
+    // centre the traffic lights in a taller strip, but a window with a toolbar
+    // reserves a toolbar area and lays the content view out beneath it --
+    // full-size content view or not. That is what put a 40pt band with the
+    // traffic lights above the app's own title bar and made the top of the
+    // window read as two stacked bars. Removing it puts Qt's content back at
+    // y=0; the bar aligns itself to the lights via traffic_light_rect().
+    if (window.toolbar != nil) {
+        window.toolbar = nil;
     }
 
     // Dragging by the background is what replaces the missing title bar. Text
@@ -107,15 +108,35 @@ void add_window_vibrancy(QWidget* widget) {
     log::info(kTag, "vibrancy attached");
 }
 
-int traffic_light_inset(QWidget* widget) {
+QRect traffic_light_rect(QWidget* widget) {
     NSWindow* window = native_window(widget);
-    NSButton* zoom =
-        window != nil ? [window standardWindowButton:NSWindowZoomButton] : nil;
-    if (zoom == nil) return 78;  // no window to measure; the classic value
-    // Measured rather than guessed, from this window's real buttons, so the
-    // value tracks the toolbar style and whatever Apple changes next.
-    const NSRect in_window = [zoom convertRect:zoom.bounds toView:nil];
-    return static_cast<int>(NSMaxX(in_window)) + 12;
+    if (window == nil) return {};
+
+    NSButton* close = [window standardWindowButton:NSWindowCloseButton];
+    NSButton* zoom = [window standardWindowButton:NSWindowZoomButton];
+    if (close == nil || zoom == nil) return {};
+    // In full screen AppKit hides the buttons and slides them out of the title
+    // bar; reserving a gap for something that is not on screen leaves the
+    // wordmark stranded in the middle of the bar.
+    if (close.isHidden || zoom.isHidden) return {};
+
+    // Measured from this window's real buttons rather than assumed, so the
+    // values track whatever Apple changes next.
+    const NSRect first = [close convertRect:close.bounds toView:nil];
+    const NSRect last = [zoom convertRect:zoom.bounds toView:nil];
+    const NSRect span = NSUnionRect(first, last);
+
+    // AppKit's window space is bottom-left origin; Qt's is top-left. The
+    // content view fills the frame (no toolbar, full-size content view), so
+    // flipping against the window height puts the rect straight into the
+    // coordinates the title bar widget lays out in.
+    const CGFloat height = NSHeight(window.frame);
+    const CGFloat top = height - NSMaxY(span);
+
+    return QRect(static_cast<int>(std::lround(NSMinX(span))),
+                 static_cast<int>(std::lround(top)),
+                 static_cast<int>(std::lround(NSWidth(span))),
+                 static_cast<int>(std::lround(NSHeight(span))));
 }
 
 void pin_overlay_window(QWidget* widget) {

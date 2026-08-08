@@ -264,6 +264,13 @@ if(MIMI_BUILD_GUI)
     src/ui/icons.cpp
     src/ui/mac_window.mm
     src/ui/voice_orb.cpp
+    src/ui/faces.cpp
+    src/ui/lumin_orb.cpp
+    src/ui/neural_sidebar.cpp
+    src/ui/neural_sidebar.hpp  # Q_OBJECT, needs moc
+    src/ui/lumin_orb.hpp     # Q_OBJECT, needs moc
+    src/ui/face_picker.cpp
+    src/ui/face_picker.hpp     # Q_OBJECT, needs moc
     src/ui/voice_bridge.hpp     # Q_OBJECT, needs moc
     src/ui/main_window.hpp
     src/ui/floating_orb.hpp
@@ -302,6 +309,13 @@ if(MIMI_BUILD_GUI)
     PREFIX "/"
     BASE   "assets"
     FILES  assets/mimi_face.png)
+
+  # Her faces. Six square portraits, cropped by scripts/build_faces.py.
+  qt_add_resources(mimi_app "faces"
+    PREFIX "/faces"
+    BASE   "assets/faces"
+    FILES  assets/faces/face1.png assets/faces/face2.png assets/faces/face3.png
+           assets/faces/face4.png assets/faces/face5.png assets/faces/face6.png)
 
   target_link_libraries(mimi_app PRIVATE Qt6::Widgets mimi_voice mimi_brain
     "-framework AppKit")
@@ -358,6 +372,13 @@ if(MIMI_BUILD_GUI)
       src/ui/live_thinking.cpp
       src/ui/floating_orb.cpp
       src/ui/voice_orb.cpp
+      src/ui/faces.cpp
+      src/ui/lumin_orb.cpp
+      src/ui/neural_sidebar.cpp
+      src/ui/neural_sidebar.hpp
+      src/ui/lumin_orb.hpp
+      src/ui/face_picker.cpp
+      src/ui/face_picker.hpp
       src/ui/glass_card.cpp
       src/ui/ambient.cpp
       src/ui/controls.cpp
@@ -387,6 +408,10 @@ if(MIMI_BUILD_GUI)
     )
     qt_add_resources(mimi_gallery "galleryicon"
       PREFIX "/" BASE "assets" FILES assets/mimi_face.png)
+    qt_add_resources(mimi_gallery "galleryfaces"
+      PREFIX "/faces" BASE "assets/faces"
+      FILES  assets/faces/face1.png assets/faces/face2.png assets/faces/face3.png
+             assets/faces/face4.png assets/faces/face5.png assets/faces/face6.png)
     target_link_libraries(mimi_gallery PRIVATE Qt6::Widgets mimi_voice mimi_brain)
     target_compile_definitions(mimi_gallery PRIVATE
       MIMI_SRC_DIR="${CMAKE_CURRENT_SOURCE_DIR}")

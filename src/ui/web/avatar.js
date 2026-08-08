@@ -329,7 +329,7 @@ const kExpressions = {
     thinking:    { relaxed: 0.35 },
     speaking:    { happy: 0.10 },
     remembering: { happy: 0.30 },
-    muted:       { sad: 0.18 },
+    muted:       { sad: 0.62, relaxed: 0.15 },
 };
 
 // Where she looks in each state. Thinking is the only one that breaks eye
@@ -463,9 +463,12 @@ class Avatar {
         // there is no panel for her to be boxed inside. Offsetting the camera
         // rather than moving the model keeps her at the world origin, so every
         // pose, the spring bones and the ground light stay where they were.
+        // Centred. The old -0.62 offset pushed her right because the canvas
+        // used to span the whole window; she has her own panel now, and being
+        // shoved against its edge is not composition, it is a leftover.
         this.home = {
-            position: new THREE.Vector3(-0.62, 0.98, 4.42),
-            target: new THREE.Vector3(-0.62, 0.82, 0),
+            position: new THREE.Vector3(0, 0.98, 4.42),
+            target: new THREE.Vector3(0, 0.86, 0),
         };
         this.camera.position.copy(this.home.position);
 
@@ -496,11 +499,17 @@ class Avatar {
         // not a deliberate feature, it was 1.62 being slightly past the
         // horizontal, and a camera that can get under a standing figure is a
         // defect in a product that sits on a desk at work.
-        controls.minPolarAngle = 0.30;
+        controls.minPolarAngle = 0.05;
         controls.maxPolarAngle = 1.50;
+        // Panning is deliberately unbounded: she can be pushed to the bottom of
+        // the window, off the edge, anywhere. The only clamp left is the one
+        // that keeps the camera from dropping under a standing figure.
         controls.screenSpacePanning = true;
         this.controls = controls;
 
+        // Once you move the camera it is yours; the auto-framing stands down.
+        this.userMoved = false;
+        controls.addEventListener('start', () => { this.userMoved = true; });
         this.renderer.domElement.addEventListener('dblclick', () => this.resetView());
 
         // The model faces +Z (checked against the rig: the eye bones sit at
@@ -523,6 +532,34 @@ class Avatar {
         new ResizeObserver(() => this.resize()).observe(this.host);
     }
 
+    // Frame her from the viewport, never from a constant.
+    //
+    // The camera distance was hard-coded for a tall column. Dropped into a
+    // short, wide panel the vertical field of view no longer covers 1.6 m of
+    // person, and the first thing to leave the frame is her head -- which is
+    // the one part that must never go. So the distance is computed from the
+    // aspect on every resize: far enough that her whole height fits with
+    // margin, and far enough that her width fits too when the panel is narrow.
+    #frame() {
+        const vfov = THREE.MathUtils.degToRad(this.camera.fov);
+        const fitHeight = 1.98;   // 1.61 m of her, plus air above and below
+        const fitWidth = 1.15;
+        const byHeight = (fitHeight / 2) / Math.tan(vfov / 2);
+        const hfov = 2 * Math.atan(Math.tan(vfov / 2) * this.camera.aspect);
+        const byWidth = (fitWidth / 2) / Math.tan(hfov / 2);
+        const distance = Math.max(byHeight, byWidth);
+
+        this.home.position.set(this.home.target.x, 0.98, distance);
+        // Only re-frame while the camera is still the one we composed. Once the
+        // user has orbited it is theirs, and yanking it back on a resize would
+        // undo their view.
+        if (!this.userMoved && this.controls) {
+            this.camera.position.copy(this.home.position);
+            this.controls.target.copy(this.home.target);
+            this.controls.update();
+        }
+    }
+
     resize() {
         const w = Math.max(1, this.host.clientWidth);
         const h = Math.max(1, this.host.clientHeight);
@@ -534,6 +571,7 @@ class Avatar {
         this.renderer.setSize(w, h);
         this.camera.aspect = w / h;
         this.camera.updateProjectionMatrix();
+        this.#frame();
     }
 
     async load(url) {
@@ -600,6 +638,9 @@ class Avatar {
     // so a menu item or a keystroke in the host can do the same.
     resetView() {
         if (!this.controls) return;
+        // Back under the app's framing, including on the next resize.
+        this.userMoved = false;
+        this.#frame();
         this.camera.position.copy(this.home.position);
         this.controls.target.copy(this.home.target);
         this.controls.update();

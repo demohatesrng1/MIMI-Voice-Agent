@@ -5,176 +5,283 @@
 #ifdef MIMI_HAS_AVATAR
 #include "ui/avatar_view.hpp"
 #endif
+#include "brain/account.hpp"
+#include "ui/command_bar.hpp"
+#include "ui/neural_sidebar.hpp"
+#include "ui/lumin_orb.hpp"
+#include "ui/theme.hpp"
 #include "ui/voice_orb.hpp"
 #include "ui/workspace_dock.hpp"
 
+#include <QAbstractButton>
+#include <QFontMetrics>
 #include <QLabel>
+#include <QPainter>
+#include <QTimer>
+#include <QGridLayout>
+#include <QHBoxLayout>
 #include <QStyle>
 #include <QVBoxLayout>
 
 namespace mimi::ui {
 
+// A glass card: a low-alpha lift with a brighter hairline, and a deep shadow so
+// it floats over the stage rather than sitting in it. The primary one borrows
+// the orb's light, which is what carries the eye from her to the thing to press.
+class StageCard : public QAbstractButton {
+public:
+    StageCard(QString name, QString note, bool primary, QWidget* parent = nullptr)
+        : QAbstractButton(parent), name_(std::move(name)), note_(std::move(note)),
+          primary_(primary) {
+        setCursor(Qt::PointingHandCursor);
+        setAttribute(Qt::WA_Hover);
+        setMinimumHeight(104);
+        setMinimumWidth(200);
+        setFocusPolicy(Qt::StrongFocus);
+    }
+
+    void setAccent(const QColor& accent) { accent_ = accent; update(); }
+    void setHint(const QString& hint) { hint_ = hint; update(); }
+
+protected:
+    void paintEvent(QPaintEvent*) override {
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing);
+        const QRectF box = QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5);
+        const bool hot = underMouse() || hasFocus();
+
+        QColor fill = primary_ ? QColor(accent_.red(), accent_.green(), accent_.blue(),
+                                        hot ? 46 : 30)
+                               : QColor(255, 255, 255, hot ? 19 : 11);
+        QColor edge = primary_ ? QColor(accent_.red(), accent_.green(), accent_.blue(),
+                                        hot ? 150 : 92)
+                               : QColor(255, 255, 255, hot ? 46 : 23);
+
+        painter.setPen(QPen(edge, 1.0));
+        painter.setBrush(fill);
+        painter.drawRoundedRect(box, 18, 18);
+
+        // Name, then the note under it.
+        painter.setPen(theme::kInk);
+        QFont name = font();
+        name.setPointSizeF(15.5);
+        name.setWeight(QFont::Medium);
+        painter.setFont(name);
+        const int left = 20;
+        painter.drawText(QRect(left, height() - 54, width() - left * 2, 22),
+                         Qt::AlignLeft | Qt::AlignVCenter, name_);
+
+        painter.setPen(theme::kFaint);
+        QFont note = font();
+        note.setPointSizeF(12.0);
+        painter.setFont(note);
+        // Elided, not clipped: a sentence that runs off the edge of a card reads
+        // as a rendering fault rather than as a truncation.
+        const int noteWidth = width() - left * 2;
+        const QString shown =
+            QFontMetrics(note).elidedText(note_, Qt::ElideRight, noteWidth);
+        painter.drawText(QRect(left, height() - 32, noteWidth, 20),
+                         Qt::AlignLeft | Qt::AlignVCenter, shown);
+
+        // The hint pill, top right: how else to reach this.
+        if (!hint_.isEmpty()) {
+            QFont pill = font();
+            pill.setPointSizeF(9.5);
+            pill.setWeight(QFont::Medium);
+            painter.setFont(pill);
+            const QRect text = QFontMetrics(pill).boundingRect(hint_);
+            const QRectF chip(width() - text.width() - 34, 16, text.width() + 16, 20);
+            painter.setPen(QPen(QColor(255, 255, 255, 30), 1.0));
+            painter.setBrush(Qt::NoBrush);
+            painter.drawRoundedRect(chip, 6, 6);
+            painter.setPen(theme::kFaint);
+            painter.drawText(chip, Qt::AlignCenter, hint_);
+        }
+
+        // A dot in the orb's light, so each card is anchored by the same colour.
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(primary_ ? accent_ : QColor(accent_.red(), accent_.green(),
+                                                     accent_.blue(), 150));
+        painter.drawEllipse(QPointF(left + 4, 26), 4.0, 4.0);
+    }
+
+private:
+    QString name_;
+    QString note_;
+    QString hint_;
+    QColor accent_{theme::kAccent};
+    bool primary_ = false;
+};
+
+
 HomeView::HomeView(QWidget* parent) : QWidget(parent) {
     setObjectName(QStringLiteral("home"));
 
-    // Not a layout. She stands full height down the right of the window and
-    // the conversation floats over the stage next to her, so the two overlap
-    // by design -- which is exactly what a box layout exists to prevent.
-    // Everything here is placed by hand in layoutStage().
+    // A command centre, split. Left is her -- and nothing but her, plus what
+    // has been said and the way to say more. Right is the state of the machine,
+    // floating clear of it on glass. The two never share a column, so she can
+    // never be crowded out of her own screen.
+    auto* split = new QHBoxLayout(this);
+    split->setContentsMargins(30, 16, 26, 20);
+    split->setSpacing(26);
 
+    // ---------------------------------------------------------------- left
+    auto* left = new QVBoxLayout;
+    left->setSpacing(0);
+    left->addStretch(3);
+
+    // The companion, and she is the real model -- not a generated sphere.
+    // The orb only ever exists as the fallback for a machine with no .vrm.
 #ifdef MIMI_HAS_AVATAR
-    // Her, full length. The VRM when there is one to show, and the 2D orb when
-    // there is not -- the avatar needs a licensed model file that is not in the
-    // repo, so a fresh checkout has to come up with something rather than a
-    // hole in the page.
     if (AvatarView::available()) {
         avatar_ = new AvatarView(this);
+        avatar_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+        avatar_->setMinimumSize(360, 420);
+        left->addWidget(avatar_, 6);
         connect(avatar_, &AvatarView::failed, this, [this] {
+            // No WebGL, or a model that will not parse. Something has to stand
+            // in her place rather than leaving a hole in the screen.
             if (avatar_ == nullptr) return;
             avatar_->hide();
             avatar_->deleteLater();
             avatar_ = nullptr;
-            if (orb_ != nullptr) orb_->show();
-            layoutStage();
+            if (lumin_ != nullptr) lumin_->show();
         });
     }
 #endif
 
-    orb_ = new VoiceOrb(this);
-    orb_->setFixedSize(200, 200);
-#ifdef MIMI_HAS_AVATAR
-    if (avatar_ != nullptr) orb_->hide();
-#endif
+    lumin_ = new LuminOrb(this);
+    lumin_->setMinimumSize(320, 320);
+    lumin_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    connect(lumin_, &LuminOrb::held, this, &HomeView::voiceRequested);
+    connect(lumin_, &LuminOrb::lightChanged, this, &HomeView::applyLight);
+    left->addWidget(lumin_, 6, Qt::AlignHCenter);
+    if (avatar_ != nullptr) lumin_->hide();
 
-    // The caption block: what you said, small and quiet above; her answer
-    // below, large. No transcript to scroll -- you glance at the exchange in
-    // progress, and the timeline page is where history lives.
-    stateLabel_ = new QLabel(QStringLiteral("STARTING"), this);
-    stateLabel_->setObjectName(QStringLiteral("heroState"));
+    left->addSpacing(6);
+
+    // The exchange, as floating type over the void rather than a scrollable
+    // list. You are looking at the conversation you are in, not its archive.
+    greetingLabel_ = new QLabel(this);
+    greetingLabel_->setObjectName(QStringLiteral("greeting"));
+    greetingLabel_->setAlignment(Qt::AlignCenter);
+    greetingLabel_->setWordWrap(true);
+    left->addWidget(greetingLabel_);
+
+    marqueeLabel_ = new QLabel(this);
+    marqueeLabel_->setObjectName(QStringLiteral("marquee"));
+    marqueeLabel_->setAlignment(Qt::AlignCenter);
+    left->addWidget(marqueeLabel_);
+
+    static const QStringList kStates{
+        QStringLiteral("Here to listen."),
+        QStringLiteral("Brainstorming with you."),
+        QStringLiteral("Processing your day."),
+    };
+    marqueeLabel_->setText(kStates.first());
+    marqueeTimer_ = new QTimer(this);
+    marqueeTimer_->setInterval(3600);
+    connect(marqueeTimer_, &QTimer::timeout, this, [this] {
+        marqueeIndex_ = (marqueeIndex_ + 1) % kStates.size();
+        marqueeLabel_->setText(kStates.at(marqueeIndex_));
+    });
+    marqueeTimer_->start();
 
     saidLabel_ = new QLabel(this);
-    saidLabel_->setObjectName(QStringLiteral("heroSaid"));
+    saidLabel_->setObjectName(QStringLiteral("bubbleSaid"));
+    saidLabel_->setAlignment(Qt::AlignCenter);
     saidLabel_->setWordWrap(true);
     saidLabel_->setVisible(false);
+    left->addWidget(saidLabel_, 0, Qt::AlignHCenter);
 
-    replyLabel_ = new QLabel(QStringLiteral("Ask anything — or just start talking."), this);
-    replyLabel_->setObjectName(QStringLiteral("heroReply"));
+    left->addSpacing(8);
+
+    replyLabel_ = new QLabel(this);
+    replyLabel_->setObjectName(QStringLiteral("bubbleReply"));
+    replyLabel_->setAlignment(Qt::AlignCenter);
     replyLabel_->setWordWrap(true);
+    replyLabel_->setVisible(false);
+    left->addWidget(replyLabel_, 0, Qt::AlignHCenter);
 
     live_ = new LiveThinking(this);
     live_->setVisible(false);
+    left->addWidget(live_, 0, Qt::AlignHCenter);
 
-    // The captions sit on top of her, so without this every drag that began on
-    // a word would be eaten by a label instead of turning the camera.
-    for (QWidget* caption : {static_cast<QWidget*>(stateLabel_),
-                             static_cast<QWidget*>(saidLabel_),
-                             static_cast<QWidget*>(replyLabel_),
-                             static_cast<QWidget*>(live_)}) {
-        caption->setAttribute(Qt::WA_TransparentForMouseEvents);
+    // A wrapped QLabel only reports the height its text actually needs if the
+    // policy says so; without this the layout hands it a single line's worth
+    // and the bubbles clip their own contents.
+    for (QLabel* bubble : {greetingLabel_, saidLabel_, replyLabel_}) {
+        // Fixed, not maximum: the height is computed from heightForWidth(), and
+        // a centred label that renders narrower than the width we measured wraps
+        // onto more lines than we allowed for and clips the first one.
+        bubble->setFixedWidth(480);
+        QSizePolicy policy = bubble->sizePolicy();
+        policy.setHeightForWidth(true);
+        policy.setVerticalPolicy(QSizePolicy::Minimum);
+        bubble->setSizePolicy(policy);
     }
+    // Real margins, not stylesheet padding: QSS padding on a QLabel is painted
+    // by the style but never reaches heightForWidth(), so the bubble sizes
+    // itself for the text and then clips it.
+    saidLabel_->setContentsMargins(18, 10, 18, 10);
+    replyLabel_->setContentsMargins(24, 18, 24, 18);
 
-    // The tools still follow what you are doing, but they sit at the foot of
-    // the caption column now rather than across the whole page: a dock spanning
-    // the window would run underneath her feet.
+    left->addStretch(2);
+
+    // The way to say something, at the foot of her half.
+    composer_ = new CommandBar(this);
+    composer_->setMaximumWidth(560);
+    connect(composer_, &CommandBar::submitted, this, &HomeView::commandRequested);
+    connect(composer_, &CommandBar::micClicked, this, &HomeView::voiceRequested);
+    left->addWidget(composer_, 0, Qt::AlignHCenter);
+
+    split->addLayout(left, 62);
+
+    // --------------------------------------------------------------- right
+    sidebar_ = new NeuralSidebar(this);
+    sidebar_->setMinimumWidth(300);
+    split->addWidget(sidebar_, 34);
+
+    // Everything the old home screen carried, kept alive but off this surface.
     dock_ = new WorkspaceDock(this);
+    dock_->hide();
     connect(dock_, &WorkspaceDock::commandRequested, this, &HomeView::commandRequested);
+    orb_ = new VoiceOrb(this);
+    orb_->hide();
+    stateLabel_ = new QLabel(this);
+    stateLabel_->hide();
+    cardVoice_ = nullptr;
+    cardReflect_ = nullptr;
+    cardBrainstorm_ = nullptr;
+
+    applyLight();
 }
 
-// The stage: her column on the right, the caption column beside it.
-//
-// She gets a fixed share of the width rather than a fixed number of pixels, so
-// the composition holds from a small window to a full screen -- and a floor
-// under it, because below a certain width there is no room for a person and a
-// sentence side by side, and the sentence has to win.
-void HomeView::layoutStage() {
-    const int w = width();
-    const int h = height();
-    if (w <= 0 || h <= 0) return;
-
-    const int stageW = qBound(300, static_cast<int>(w * 0.40), 620);
-    const bool roomForBoth = w >= 860;
-
-#ifdef MIMI_HAS_AVATAR
-    if (avatar_ != nullptr) {
-        // The whole window, not a column.
-        //
-        // A canvas the size of her column has edges, and a transparent widget
-        // still clips whatever crosses them -- her hair on a turn, the light
-        // under her feet, and anything she is panned toward. That clipped
-        // rectangle is the black box: she was not standing in the window, she
-        // was standing in a hole cut out of it. Given the whole window she can
-        // be moved anywhere in it and nothing has an edge to hit; the camera
-        // offset in avatar.js is what puts her on the right by default.
-        avatar_->setGeometry(0, 0, w, h);
-        avatar_->setVisible(true);
-        // Never lower() this one. QWebEngineView is backed by a native NSView,
-        // and Qt's stacking between native and non-native siblings on macOS is
-        // not dependable: lowering it put her behind the window's own backing
-        // and she disappeared from the screen entirely. The page is transparent
-        // everywhere she is not drawn, so the captions painted underneath show
-        // through it anyway -- which is the result lower() was reaching for.
-        avatar_->raise();
-    }
-#endif
-    if (orb_ != nullptr && orb_->isVisibleTo(this)) {
-        orb_->move(w - stageW / 2 - orb_->width() / 2, h / 2 - orb_->height() / 2);
-    }
-
-    // The caption column. Capped as well as inset: 40px type set across a
-    // full-screen window makes a line you have to track with your head.
-    const int left = 56;
-    const int right = roomForBoth ? w - stageW - 24 : w - 56;
-    const int colW = qBound(220, right - left, 720);
-
-    // isVisibleTo(), never isVisible(): the latter is false for every child
-    // until the window itself is shown, so during construction and the first
-    // resize it reported every label hidden, measured them all as zero-height
-    // and left them stacked at the origin.
-    const bool showSaid = saidLabel_->isVisibleTo(this) && !saidLabel_->text().isEmpty();
-    const bool showReply = replyLabel_->isVisibleTo(this);
-    const bool showLive = live_->isVisibleTo(this);
-
-    constexpr int kStateH = 18;
-    constexpr int kGapState = 20;
-    constexpr int kGapSaid = 16;
-
-    const int saidH = showSaid ? saidLabel_->heightForWidth(colW) : 0;
-    const int replyH = showReply ? replyLabel_->heightForWidth(colW) : 0;
-    const int liveH = showLive ? live_->sizeHint().height() : 0;
-    const int block = kStateH + kGapState + (showSaid ? saidH + kGapSaid : 0) +
-                      qMax(replyH, liveH);
-
-    // Centred against her, lifted slightly: optical centre sits above the
-    // geometric one, and the dock occupies the bottom of the column.
-    const int y0 = qMax((h - block) / 2 - 30, 84);
-    int y = y0;
-
-    stateLabel_->setGeometry(left, y, colW, kStateH);
-    y += kStateH + kGapState;
-    if (showSaid) {
-        saidLabel_->setGeometry(left, y, colW, saidH);
-        y += saidH + kGapSaid;
-    }
-    if (showReply) replyLabel_->setGeometry(left, y, colW, replyH);
-    if (showLive) live_->setGeometry(left, y, colW, liveH);
-
-    // sizeHint() is read before the chips have been laid out for the width
-    // they are about to get, so it comes back short and the row ends up
-    // clipped. The floor is the tag plus a chip plus the gap between them.
-    dock_->adjustSize();
-    const int dockH = qMax(dock_->sizeHint().height(), 74);
-    dock_->setGeometry(left, h - dockH - 34, colW, dockH);
-    // The only children with anything to click, so they are the only ones that
-    // have to sit above her.
-    dock_->raise();
+void HomeView::applyLight() {
+    if (lumin_ == nullptr || greetingLabel_ == nullptr) return;
+    const brain::Account account = brain::Accounts().load();
+    const QString who = QString::fromStdString(
+        account.preferred.empty() ? account.username : account.preferred);
+    const QString hello = who.isEmpty() ? lumin_->greetingWord()
+                                        : QStringLiteral("%1, %2").arg(
+                                              lumin_->greetingWord(), who);
+    greetingLabel_->setText(
+        QStringLiteral("%1. <span style=\"color:%2\">I'm ready.</span>")
+            .arg(hello, theme::kFaint.name()));
 }
+
+void HomeView::refreshSidebar() {
+    if (sidebar_ != nullptr) sidebar_->refresh();
+}
+
+void HomeView::layoutStage() {}
 
 void HomeView::resizeEvent(QResizeEvent* event) {
     QWidget::resizeEvent(event);
-    layoutStage();
 }
 
 void HomeView::setPresence(Presence presence) {
+    if (lumin_ != nullptr) lumin_->setPresence(presence);
     orb_->setPresence(presence);
 #ifdef MIMI_HAS_AVATAR
     if (avatar_ != nullptr) avatar_->setPresence(presence);
@@ -189,6 +296,7 @@ void HomeView::setPresence(Presence presence) {
 }
 
 void HomeView::setLevel(float rms) {
+    if (lumin_ != nullptr) lumin_->setLevel(rms);
     orb_->setLevel(rms);
 #ifdef MIMI_HAS_AVATAR
     if (avatar_ != nullptr) avatar_->setLevel(rms);
@@ -204,16 +312,32 @@ void HomeView::setExchange(const QString& said, const QString& replied) {
         replyLabel_->setVisible(true);
         replyLabel_->setText(replied);
     }
-    // The block's height just changed; recentre it.
-    layoutStage();
+    // Size each bubble to the text it now holds. heightForWidth() is the only
+    // thing that knows how many lines the wrapped string takes, and Japanese
+    // line spacing is taller than the Latin metrics the layout assumed.
+    for (QLabel* bubble : {saidLabel_, replyLabel_}) {
+        if (bubble->text().isEmpty()) continue;
+        const int wide = bubble->width() > 0 ? bubble->width() : 480;
+        const QMargins m = bubble->contentsMargins();
+        bubble->setMinimumHeight(bubble->heightForWidth(wide) + m.top() + m.bottom() + 8);
+    }
+
+    // The greeting steps aside for an answer rather than being pushed down the
+    // page; the marquee goes with it, since it is only ever ambient.
+    const bool talking = !said.isEmpty() || !replied.isEmpty();
+    greetingLabel_->setVisible(!talking);
+    marqueeLabel_->setVisible(!talking);
+    if (talking) marqueeTimer_->stop(); else marqueeTimer_->start();
 }
 
 void HomeView::setThinking() {
     // Swap the answer slot for the live-thinking pipeline.
     replyLabel_->setVisible(false);
+    greetingLabel_->setVisible(false);
+    marqueeLabel_->setVisible(false);
+    marqueeTimer_->stop();
     live_->setVisible(true);
     live_->start();
-    layoutStage();
 }
 
 }  // namespace mimi::ui

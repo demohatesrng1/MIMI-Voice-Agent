@@ -15,6 +15,7 @@
 #include "brain/notes.hpp"
 #include "brain/tools.hpp"
 #include "ui/context_ribbon.hpp"
+#include "ui/faces.hpp"
 #include "ui/controls.hpp"
 #include "ui/settings_view.hpp"
 #include "ui/icons.hpp"
@@ -26,11 +27,15 @@
 #include <QApplication>
 #include <QCloseEvent>
 #include <QHBoxLayout>
+#include <QIcon>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMouseEvent>
+#include <QPainter>
 #include <QPushButton>
 #include <QResizeEvent>
+#include <QScreen>
+#include <QGuiApplication>
 #include <QShortcut>
 #include <QStackedWidget>
 #include <QTimer>
@@ -38,6 +43,7 @@
 #include <QWindow>
 
 #include <algorithm>
+#include <cmath>
 #include <thread>
 
 namespace mimi::ui {
@@ -108,8 +114,13 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     // creation. This is what lets the vibrancy layer show through wherever
     // painting leaves alpha.
     setAttribute(Qt::WA_TranslucentBackground);
-    resize(1120, 760);
-    setMinimumSize(940, 660);
+    // Two sizes and no third.
+    //
+    // The layout is composed for one shape, so a freely resizable window buys
+    // nothing except a hundred shapes it was never designed at. It opens large
+    // and fixed, and the only other state is full screen -- which is the one
+    // people actually want for something they leave open all day.
+    applyFixedSize();
 
     // Layer 0: the living background. Everything else floats over it, and it
     // reflects her presence, so the whole room changes with what she is doing.
@@ -147,27 +158,17 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     pages_->addWidget(settings_);
     column->addWidget(pages_, 1);
 
-    // Layer 2: the command bar, floating clear of every edge on its shadow.
-    composer_ = new CommandBar;
-    composer_->setMaximumWidth(640);
-    connect(composer_, &CommandBar::submitted, this, &MainWindow::ask);
-    connect(composer_, &CommandBar::micClicked, this, &MainWindow::onMicClicked);
-
-    auto* dock = new QWidget;
-    auto* dockRow = new QHBoxLayout(dock);
-    dockRow->setContentsMargins(48, 4, 48, 26);
-    dockRow->addStretch(1);
-    dockRow->addWidget(composer_, 8);
-    dockRow->addStretch(1);
-    column->addWidget(dock);
+    // The command bar is no longer here: it belongs to her half of the command
+    // centre, at the foot of the left column, so the thing you type into sits
+    // under the thing you are talking to rather than across the whole window.
 
     // The context strip lives at the foot, as a status bar. Directly under the
     // title bar it was a second band of chrome saying very little -- two rows
     // of furniture before any content, which is the thing an editor never does.
     // At the bottom it reads as status, which is what it is.
-    ribbon_ = new ContextRibbon;
-    column->addWidget(ribbon_);
-    refreshContext();  // after the ribbon exists, or it fills nothing
+    // The foot strip is gone too: everything it reported -- notes, control --
+    // is on the right-hand panel now, where it is read rather than skimmed.
+    ribbon_ = nullptr;
 
     // Old journal days go at startup, so the log has a bounded life without
     // anyone having to remember to clear it.
@@ -187,6 +188,9 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     setCentralWidget(root);
 
     connect(home_, &HomeView::commandRequested, this, &MainWindow::ask);
+    // Holding the orb, or pressing Voice Mode, both mean the same thing: start
+    // listening now, without the keyboard.
+    connect(home_, &HomeView::voiceRequested, this, &MainWindow::onMicClicked);
 
     // Floating overlays, parented to the ambient root so they hover over the
     // pages. Positioned by layoutOverlays(), not the column layout.
@@ -199,6 +203,14 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
 
     auto* paletteKey = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_K), this);
     connect(paletteKey, &QShortcut::activated, this, [this] { palette_->open(); });
+    // The macOS full-screen key, and Escape to come back out of it.
+    auto* fullKey = new QShortcut(QKeySequence(Qt::CTRL | Qt::META | Qt::Key_F), this);
+    connect(fullKey, &QShortcut::activated, this, &MainWindow::toggleFullScreen);
+    auto* leaveFull = new QShortcut(QKeySequence(Qt::Key_Escape), this);
+    connect(leaveFull, &QShortcut::activated, this, [this] {
+        if (isFullScreen()) toggleFullScreen();
+    });
+
     auto* searchKey = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_F), this);
     connect(searchKey, &QShortcut::activated, this, [this] { search_->open(); });
 
@@ -300,14 +312,90 @@ void MainWindow::layoutOverlays() {
 
 // ----------------------------------------------------------------- title bar
 
+// A breathing presence dot. The only green in the interface, and it means one
+// thing: she is here. Shares the orb's 3-second breath, so the two read as one
+// heartbeat rather than two timers.
+class PresenceDot : public QWidget {
+public:
+    explicit PresenceDot(QWidget* parent = nullptr) : QWidget(parent) {
+        setFixedSize(14, 14);
+        auto* clock = new QTimer(this);
+        clock->setInterval(40);
+        connect(clock, &QTimer::timeout, this, [this] {
+            phase_ = std::fmod(phase_ + 0.04 / 3.0, 1.0);
+            update();
+        });
+        clock->start();
+    }
+
+    void setLive(bool live) { live_ = live; update(); }
+
+protected:
+    void paintEvent(QPaintEvent*) override {
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing);
+        const QPointF centre(width() / 2.0, height() / 2.0);
+        const double breath = 0.5 - 0.5 * std::cos(phase_ * 2 * M_PI);
+        QColor colour = live_ ? theme::kLive : theme::kFaint;
+
+        if (live_) {
+            QColor halo = colour;
+            halo.setAlphaF(0.34 * (1.0 - breath));
+            painter.setPen(Qt::NoPen);
+            painter.setBrush(halo);
+            painter.drawEllipse(centre, 3.0 + breath * 4.0, 3.0 + breath * 4.0);
+        }
+        colour.setAlphaF(live_ ? 0.55 + 0.45 * breath : 0.5);
+        painter.setBrush(colour);
+        painter.setPen(Qt::NoPen);
+        painter.drawEllipse(centre, 3.0, 3.0);
+    }
+
+private:
+    double phase_ = 0.0;
+    bool live_ = true;
+};
+
+// Two clusters and nothing between them.
+//
+// There is no centre element in the bar at all -- not an empty one, not a
+// spacer. A stretch does the separating, so there is nothing to leave unused
+// and nothing to collapse awkwardly at a small width. Everything that used to
+// live here (the pages, Voice, Mute) is reached from the gear or the command
+// palette: on a screen meant to be a sanctuary, five controls in the chrome is
+// four too many.
+// The one fixed shape, as large as the display comfortably allows.
+void MainWindow::applyFixedSize() {
+    QSize wanted(1440, 940);
+    if (QScreen* screen = QGuiApplication::primaryScreen(); screen != nullptr) {
+        const QRect avail = screen->availableGeometry();
+        wanted.setWidth(std::min(wanted.width(), avail.width() - 60));
+        wanted.setHeight(std::min(wanted.height(), avail.height() - 60));
+    }
+    setFixedSize(wanted);
+}
+
+// Full screen is the only other size. Coming back has to lift the fixed-size
+// constraint first, or Qt refuses to grow the window at all.
+void MainWindow::toggleFullScreen() {
+    if (isFullScreen()) {
+        showNormal();
+        applyFixedSize();
+        return;
+    }
+    setMinimumSize(0, 0);
+    setMaximumSize(QWIDGETSIZE_MAX, QWIDGETSIZE_MAX);
+    showFullScreen();
+}
+
 QWidget* MainWindow::buildTitleBar() {
     auto* bar = new TitleBar;
     bar->setObjectName(QStringLiteral("titleBar"));
     bar->setFixedHeight(kTitleBarHeight);
 
     auto* layout = new QHBoxLayout(bar);
-    layout->setContentsMargins(0, 0, 12, 0);
-    layout->setSpacing(4);
+    layout->setContentsMargins(0, 0, 16, 0);
+    layout->setSpacing(0);
 
     // Reserved for the traffic lights, which float over the content once the
     // window uses a full-size content view.
@@ -319,111 +407,51 @@ QWidget* MainWindow::buildTitleBar() {
     auto* name = new QLabel(QStringLiteral("Mimi"));
     name->setObjectName(QStringLiteral("wordmark"));
     layout->addWidget(name);
+    layout->addSpacing(9);
 
-    // Navigation. A rule separates it from the wordmark, so the row reads as
-    // "name, then places" rather than four icons trailing a label.
-    layout->addSpacing(14);
-    auto* rule = new QWidget;
-    rule->setObjectName(QStringLiteral("chromeRule"));
-    rule->setFixedSize(1, 18);
-    layout->addWidget(rule);
-    layout->addSpacing(10);
-    navHome_ = new GhostButton(icons::Glyph::Home);
-    navHome_->setCheckable(true);
-    navHome_->setToolTip(QStringLiteral("Home"));
-    connect(navHome_, &GhostButton::clicked, this, [this] { navigate(PageHome); });
-    layout->addWidget(navHome_);
+    statusDot_ = nullptr;
+    auto* dot = new PresenceDot;
+    presenceDot_ = dot;
+    layout->addWidget(dot);
 
-    navTimeline_ = new GhostButton(icons::Glyph::Timeline);
-    navTimeline_->setCheckable(true);
-    navTimeline_->setToolTip(QStringLiteral("Memory — everything she has done"));
-    connect(navTimeline_, &GhostButton::clicked, this, [this] { navigate(PageTimeline); });
-    layout->addWidget(navTimeline_);
-
-    navNotes_ = new GhostButton(icons::Glyph::Files);
-    navNotes_->setCheckable(true);
-    navNotes_->setToolTip(QStringLiteral("Notes"));
-    connect(navNotes_, &GhostButton::clicked, this, [this] { navigate(PageNotes); });
-    layout->addWidget(navNotes_);
-
-    // The middle of the bar is empty on purpose: it is the drag surface,
-    // exactly like a native title bar.
     layout->addStretch(1);
 
-    // One status capsule instead of a scatter of badges: a dot and a word.
-    auto* pill = new QWidget;
-    pill->setObjectName(QStringLiteral("statusPill"));
-    auto* pillRow = new QHBoxLayout(pill);
-    pillRow->setContentsMargins(12, 4, 12, 4);
-    pillRow->setSpacing(7);
+    // The gear, and her face. These are the only two.
+    settingsBtn_ = new GhostButton(icons::Glyph::Settings);
+    settingsBtn_->setToolTip(QStringLiteral("Settings"));
+    connect(settingsBtn_, &QPushButton::clicked, this,
+            [this] { navigate(PageSettings); });
+    layout->addWidget(settingsBtn_);
+    layout->addSpacing(6);
 
-    statusDot_ = new QLabel(QStringLiteral("●"));
-    statusDot_->setObjectName(QStringLiteral("statusDot"));
-    pillRow->addWidget(statusDot_);
+    // Her portrait doubles as the way back to the home screen -- tapping the
+    // person you are talking to is the most obvious "take me to her" there is.
+    auto* avatar = new QPushButton;
+    avatar->setObjectName(QStringLiteral("barAvatar"));
+    avatar->setFixedSize(30, 30);
+    avatar->setCursor(Qt::PointingHandCursor);
+    avatar->setIcon(QIcon(faces::current(60)));
+    avatar->setIconSize(QSize(30, 30));
+    avatar->setFlat(true);
+    avatar->setToolTip(QStringLiteral("Home"));
+    connect(avatar, &QPushButton::clicked, this, [this] { navigate(PageHome); });
+    layout->addWidget(avatar);
 
-    statusText_ = new QLabel(QStringLiteral("Starting"));
-    statusText_->setObjectName(QStringLiteral("statusText"));
-    pillRow->addWidget(statusText_);
-    layout->addWidget(pill);
-
-    layout->addSpacing(8);
-
-    // Interrupting her, as a button.
-    //
-    // Talking over her works, but it needs a raised voice and a working
-    // microphone, and neither is guaranteed while she is mid-sentence with the
-    // speakers up. A control that is simply there whenever she is talking is
-    // the one way to stop her that cannot fail. Hidden the rest of the time --
-    // it has nothing to do until she speaks.
+    // Kept alive so the rest of MainWindow can still speak to them, but off the
+    // bar: the status line is the dot now, and Stop appears only while she talks.
+    statusText_ = new QLabel;
+    statusText_->hide();
     stopBtn_ = new QPushButton(QStringLiteral("Stop"));
     stopBtn_->setObjectName(QStringLiteral("stopBtn"));
-    stopBtn_->setCursor(Qt::PointingHandCursor);
-    stopBtn_->setFixedHeight(26);
-    stopBtn_->setToolTip(QStringLiteral("Stop talking"));
     stopBtn_->setVisible(false);
     connect(stopBtn_, &QPushButton::clicked, this, [this] {
         if (speaker_) speaker_->stop();
         if (listener_) listener_->set_speaking(false);
 #ifdef MIMI_HAS_AVATAR
-        if (auto* avatar = home_->avatar()) avatar->clearVisemes();
+        if (auto* view = home_->avatar()) view->clearVisemes();
 #endif
     });
     layout->addWidget(stopBtn_);
-
-    voicePill_ = new QPushButton(QStringLiteral("Voice"));
-    voicePill_->setObjectName(QStringLiteral("mutePill"));
-    voicePill_->setCheckable(true);
-    voicePill_->setCursor(Qt::PointingHandCursor);
-    voicePill_->setFixedHeight(26);
-    voicePill_->setToolTip(QStringLiteral("Speak answers aloud, or reply in text only"));
-    connect(voicePill_, &QPushButton::toggled, this, [this](bool silent) {
-        speakReplies_ = !silent;
-        voicePill_->setText(silent ? QStringLiteral("Text") : QStringLiteral("Voice"));
-        if (silent && speaker_) speaker_->stop();
-    });
-    layout->addWidget(voicePill_);
-
-    mutePill_ = new QPushButton(QStringLiteral("Mute"));
-    mutePill_->setObjectName(QStringLiteral("mutePill"));
-    mutePill_->setCheckable(true);
-    mutePill_->setCursor(Qt::PointingHandCursor);
-    mutePill_->setFixedHeight(30);
-    mutePill_->setToolTip(QStringLiteral("Stop listening"));
-    connect(mutePill_, &QPushButton::toggled, this, [this](bool muted) {
-        setMuted(muted);
-        mutePill_->setText(muted ? QStringLiteral("Unmute") : QStringLiteral("Mute"));
-    });
-    layout->addWidget(mutePill_);
-
-    layout->addSpacing(2);
-
-    settingsBtn_ = new GhostButton(icons::Glyph::Settings);
-    settingsBtn_->setCheckable(true);
-    settingsBtn_->setToolTip(QStringLiteral("Settings"));
-    connect(settingsBtn_, &GhostButton::clicked, this, [this] {
-        navigate(pages_->currentIndex() == PageSettings ? PageHome : PageSettings);
-    });
-    layout->addWidget(settingsBtn_);
 
     return bar;
 }

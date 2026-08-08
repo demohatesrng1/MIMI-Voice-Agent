@@ -5,7 +5,7 @@
    carved into it as boxes. Depth comes from the lift of white on glass and a
    brighter hairline on its top edge.
 
-   Two accents, and the discipline is the point. Watermelon pink (#ff4d6d)
+   Two accents, and the discipline is the point. Watermelon (#ff4d6d)
    carries everything active. Rind green is reserved for exactly one meaning —
    she is hearing you right now — and appears nowhere else in this file. */
 
@@ -90,6 +90,24 @@ QLabel { background: transparent; }
 
 #home { background: transparent; }
 
+/* The one line she says to you, set in a light serif against the geometric sans
+   of the chrome. It should sound like a person, not a status field. */
+#greeting {
+  font-size: 30px;
+  font-family: ui-serif, "New York", "Iowan Old Style", Georgia, serif;
+  font-weight: 300;
+  letter-spacing: -0.015em;
+  color: #f5f5f7;
+}
+
+/* Ambient reassurance under it: quiet, slow, and gone the moment there is a
+   real answer to read. */
+#marquee {
+  font-size: 14px;
+  color: #8a8899;
+  letter-spacing: 0.005em;
+}
+
 /* The caption column. Left-aligned against her now rather than centred under
    an orb, and set considerably larger: with the chrome stripped back this type
    *is* the interface, and it has to be readable from as far away as she is
@@ -106,6 +124,24 @@ QLabel { background: transparent; }
 
 /* What you said: quiet, above, in quotes. Deliberately recessive -- you know
    what you said, and it is only here so her answer has something to answer. */
+/* The exchange as floating bubbles over the void -- glass, not a list row. */
+#bubbleSaid {
+  font-size: 15px;
+  color: #8a8899;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 16px;
+}
+
+#bubbleReply {
+  font-size: 22px;
+  font-weight: 300;
+  color: #f2f2f4;
+  background: rgba(255,77,109,0.07);
+  border: 1px solid rgba(255,77,109,0.24);
+  border-radius: 18px;
+}
+
 #heroSaid {
   font-size: 19px;
   font-weight: 400;
@@ -117,11 +153,19 @@ QLabel { background: transparent; }
    in the app by a clear margin. Display face, light weight: a headline, not a
    paragraph. */
 #heroReply {
-  font-size: 40px;
+  font-size: 34px;
   font-weight: 300;
   line-height: 144%;
   color: #f5f5f7;
 }
+
+#barAvatar {
+  border: 1px solid rgba(255,255,255,0.18);
+  border-radius: 15px;
+  background: transparent;
+  padding: 0px;
+}
+#barAvatar:hover { border-color: rgba(255,77,109,0.65); }
 
 /* ----------------------------------------------------------- workspace dock */
 

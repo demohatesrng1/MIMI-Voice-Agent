@@ -1,5 +1,8 @@
 #include "ui/account_view.hpp"
 
+#include "ui/face_picker.hpp"
+#include "ui/faces.hpp"
+
 #include "brain/tools.hpp"
 #include "ui/theme.hpp"
 
@@ -287,7 +290,7 @@ void AccountView::buildSignUp() {
     name_ = field(QStringLiteral("Your name"));
 
     steps_ = new QStackedWidget;
-    steps_->setFixedWidth(kColumnWidth);
+    steps_->setMinimumWidth(kColumnWidth);
     for (QLineEdit* edit : {username_, password_, name_}) {
         auto* holder = new QWidget;
         auto* row = new QVBoxLayout(holder);
@@ -295,6 +298,22 @@ void AccountView::buildSignUp() {
         row->addWidget(edit);
         steps_->addWidget(holder);
         connect(edit, &QLineEdit::returnPressed, this, &AccountView::advance);
+    }
+
+    // Choosing her face. A page of its own because it is the one question with
+    // a visual answer, and seeing the six side by side is the whole decision.
+    {
+        auto* holder = new QWidget;
+        auto* row = new QVBoxLayout(holder);
+        row->setContentsMargins(0, 0, 0, 0);
+        facePicker_ = new FacePicker;
+        face_ = facePicker_->selected();
+        connect(facePicker_, &FacePicker::chosen, this, [this](const QString& id) {
+            // Held until the account exists; sign_up() writes it.
+            face_ = id;
+        });
+        row->addWidget(facePicker_, 0, Qt::AlignHCenter);
+        steps_->addWidget(holder);
     }
 
     // The last question is a choice, not a field: it can only be asked once the
@@ -354,7 +373,7 @@ void AccountView::showStep(int step) {
     step_ = step;
     error_->clear();
     steps_->setCurrentIndex(step);
-    progress_->setText(QStringLiteral("STEP %1 OF 4").arg(step + 1));
+    progress_->setText(QStringLiteral("STEP %1 OF 5").arg(step + 1));
     next_->setVisible(step != StepCallYou);
 
     switch (step) {
@@ -373,6 +392,10 @@ void AccountView::showStep(int step) {
             question_->setText(QStringLiteral("What's your name?"));
             hint_->setText(QStringLiteral("So she has something to call you."));
             name_->setFocus();
+            break;
+        case StepFace:
+            question_->setText(QStringLiteral("Which one is her?"));
+            hint_->setText(QStringLiteral("You can change this later in Settings."));
             break;
         case StepCallYou:
             question_->setText(QStringLiteral("What should she call you?"));
@@ -422,7 +445,8 @@ void AccountView::advance() {
 void AccountView::finishSignUp() {
     const bool created =
         accounts_.sign_up(username_->text().toStdString(), password_->text().toStdString(),
-                          name_->text().toStdString(), preferred_.toStdString());
+                          name_->text().toStdString(), preferred_.toStdString(),
+                          face_.toStdString());
     if (!created) {
         fail(QStringLiteral("Could not create the account."));
         return;

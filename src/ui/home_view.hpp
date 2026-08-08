@@ -7,12 +7,17 @@
 #include <QWidget>
 
 class QLabel;
+class QTimer;
 
 namespace mimi::ui {
 
 class VoiceOrb;
 class AvatarView;
 class LiveThinking;
+class LuminOrb;
+class StageCard;
+class NeuralSidebar;
+class CommandBar;
 
 // The main surface.
 //
@@ -49,10 +54,33 @@ Q_SIGNALS:
     // A suggestion or tool was pressed; the text is fed through the router
     // exactly as if it had been spoken.
     void commandRequested(QString utterance);
+    // The orb was held, or Voice Mode was pressed: start listening now.
+    void voiceRequested();
 
 private:
     // Places her column and the caption column against the current size.
     void layoutStage();
+    // Restyles everything that borrows the orb's light: the greeting, the
+    // primary card, the wordmark.
+    void applyLight();
+
+public:
+    // Re-reads the machine state on the right-hand panel.
+    void refreshSidebar();
+
+private:
+
+    // The stage.
+    LuminOrb* lumin_ = nullptr;
+    QLabel* greetingLabel_ = nullptr;
+    QLabel* marqueeLabel_ = nullptr;
+    QTimer* marqueeTimer_ = nullptr;
+    int marqueeIndex_ = 0;
+    StageCard* cardVoice_ = nullptr;
+    StageCard* cardReflect_ = nullptr;
+    StageCard* cardBrainstorm_ = nullptr;
+    NeuralSidebar* sidebar_ = nullptr;
+    CommandBar* composer_ = nullptr;
 
     VoiceOrb* orb_ = nullptr;
     // Her body. Null unless the build has WebEngine and a model was found;

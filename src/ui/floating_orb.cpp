@@ -1,5 +1,6 @@
 #include "ui/floating_orb.hpp"
 
+#include "ui/faces.hpp"
 #include "ui/theme.hpp"
 
 #ifdef Q_OS_MACOS
@@ -25,8 +26,11 @@
 namespace mimi::ui {
 namespace {
 
-constexpr int kDisc = 84;      // the artwork circle
-constexpr int kPadding = 16;   // room for the glow, which reaches past the disc
+// Twice the old 84px. At the previous size she was a smudge on a large
+// display -- the whole point of a puck pinned across every Space is that you
+// can find her without looking for her.
+constexpr int kDisc = 168;     // the artwork circle
+constexpr int kPadding = 26;   // room for the glow, which reaches past the disc
 constexpr int kDragSlop = 4;
 constexpr int kEdgeMargin = 18;
 
@@ -124,7 +128,8 @@ const QPixmap& FloatingOrb::portrait() const {
 
     // A clean full-bleed crop straight from the master art, her glow ring at
     // the edge of the disc.
-    QPixmap source(QStringLiteral(":/mimi_face.png"));
+    // Whichever portrait she is wearing, not a fixed asset -- see ui::faces.
+    QPixmap source(faces::square(faces::currentId(), 640));
     if (source.isNull()) return cache;
 
     const int scale = kDisc * 2;  // retina

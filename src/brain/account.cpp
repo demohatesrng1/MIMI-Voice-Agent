@@ -108,6 +108,7 @@ Account Accounts::load() const {
     account.username = stored.value("username", "");
     account.name = stored.value("name", "");
     account.preferred = stored.value("preferred", "");
+    account.face = stored.value("face", "");
     if (account.preferred.empty()) {
         account.preferred = account.name.empty() ? account.username : account.name;
     }
@@ -115,7 +116,8 @@ Account Accounts::load() const {
 }
 
 bool Accounts::sign_up(const std::string& username, const std::string& password,
-                       const std::string& name, const std::string& preferred) {
+                       const std::string& name, const std::string& preferred,
+                       const std::string& face) {
     if (exists()) return false;
     if (trim(username).empty() || password.empty()) return false;
 
@@ -131,6 +133,7 @@ bool Accounts::sign_up(const std::string& username, const std::string& password,
         {"username", trim(username)},
         {"name", trim(name)},
         {"preferred", trim(preferred).empty() ? trim(name) : trim(preferred)},
+        {"face", trim(face)},
         {"salt", to_hex(salt.data(), salt.size())},
         {"digest", digest},
         {"iterations", kIterations},
@@ -184,6 +187,17 @@ bool Accounts::set_password(const std::string& password) {
     if (!out) return false;
     out << stored.dump(2) << "\n";
     log::info(kTag, "password changed");
+    return true;
+}
+
+bool Accounts::set_face(const std::string& face) {
+    auto stored = read(path_);
+    if (stored.value("username", std::string{}).empty()) return false;
+    stored["face"] = trim(face);
+    stored.erase("email");
+    std::ofstream out(path_, std::ios::trunc);
+    if (!out) return false;
+    out << stored.dump(2) << "\n";
     return true;
 }
 
