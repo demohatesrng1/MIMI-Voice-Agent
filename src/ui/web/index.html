@@ -1,0 +1,33 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Mimi</title>
+<style>
+  /* No background of its own: the page is composited over the Qt living
+     canvas, so anything painted here would cut a rectangle out of it. */
+  html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; }
+  #stage { width: 100%; height: 100%; position: relative; }
+  /* Belt and braces against the renderer ever sizing the element wrong. */
+  #stage canvas { display: block; position: relative; z-index: 1; width: 100% !important; height: 100% !important; }
+
+  /* A pool of light she stands in. A full-body figure over a flat background
+     has nothing under its feet and reads as cut out and pasted on; this is the
+     cheapest thing that grounds her, and it doubles as the warm edge the dark
+     stage otherwise lacks. Behind the canvas, so it never washes over her. */
+  #ground {
+    position: absolute;
+    left: 72%; bottom: 6%;
+    width: 46%; height: 14%;
+    transform: translateX(-50%);
+    background: radial-gradient(ellipse at center,
+                rgba(255, 77, 109, 0.20) 0%,
+                rgba(255, 77, 109, 0.07) 42%,
+                rgba(255, 77, 109, 0) 72%);
+    z-index: 0;
+    pointer-events: none;
+  }
+  /* She fades in once the model is up, rather than popping into frame. */
+  #stage { opacity: 0; transition: opacity 320ms cubic-bezier(0.33, 1, 0.68, 1); }
+  body.ready #stage { opacity: 1; }
+</style>
+<div id="stage"><div id="ground"></div></div>
+<script type="module" src="avatar.bundle.js"></script>

@@ -11,6 +11,7 @@ class QLabel;
 namespace mimi::ui {
 
 class VoiceOrb;
+class AvatarView;
 class LiveThinking;
 
 // The main surface.
@@ -32,9 +33,17 @@ public:
     // The current exchange. Either may be empty.
     void setExchange(const QString& said, const QString& replied);
     void setThinking();
-    // 0..1 to show under the answer; a negative value clears it.
+
+protected:
+    // The stage is positioned by hand, not laid out -- see layoutStage().
+    void resizeEvent(QResizeEvent* event) override;
+
+public:
 
     WorkspaceDock* workspace() const { return dock_; }
+    // Null when this build has no WebEngine or no .vrm was found, in which
+    // case the 2D orb is on screen instead.
+    AvatarView* avatar() const { return avatar_; }
 
 Q_SIGNALS:
     // A suggestion or tool was pressed; the text is fed through the router
@@ -42,7 +51,13 @@ Q_SIGNALS:
     void commandRequested(QString utterance);
 
 private:
+    // Places her column and the caption column against the current size.
+    void layoutStage();
+
     VoiceOrb* orb_ = nullptr;
+    // Her body. Null unless the build has WebEngine and a model was found;
+    // the orb stands in for her when it is.
+    AvatarView* avatar_ = nullptr;
     QLabel* stateLabel_ = nullptr;
     QLabel* saidLabel_ = nullptr;
     QLabel* replyLabel_ = nullptr;

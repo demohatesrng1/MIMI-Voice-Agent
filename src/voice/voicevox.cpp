@@ -194,7 +194,74 @@ std::vector<VoicevoxStyle> Voicevox::styles() const {
     return out;
 }
 
+namespace {
+
+// Walks the accent phrases of an audio query and flattens them into one
+// timeline of moras.
+//
+// The plan is in *unscaled* seconds: speedScale is applied by the synthesiser
+// afterwards, so every duration here has to be divided by it or the mouth
+// drifts further behind the further into a sentence she gets. Unvoiced vowels
+// come back upper-case (A/I/U/E/O), and ん, っ and pauses come back as N, cl
+// and pau -- none of which is an open mouth shape.
+std::vector<Mora> timeline_from(const json& plan) {
+    // json::value() returns the fallback for a *missing* key but still throws
+    // on one that is present and null -- and VOICEVOX writes consonant and
+    // consonant_length as null for every mora that has no consonant (あ, い,
+    // う…), which is most sentences. Reading them with value() threw inside
+    // synthesize()'s try block and took the whole clip down with it, falling
+    // silently back to the system voice.
+    const auto number_or = [](const json& obj, const char* key, double fallback) {
+        const auto it = obj.find(key);
+        if (it == obj.end() || it->is_null()) return fallback;
+        return it->get<double>();
+    };
+
+    std::vector<Mora> moras;
+    const double raw_speed = number_or(plan, "speedScale", 1.0);
+    const double speed = raw_speed > 0 ? raw_speed : 1.0;
+    double t = number_or(plan, "prePhonemeLength", 0.0) / speed;
+
+    const auto push = [&](const json& mora) {
+        const double consonant = number_or(mora, "consonant_length", 0.0) / speed;
+        const double vowel_len = number_or(mora, "vowel_length", 0.0) / speed;
+        // The consonant is the closed part of the mora; the mouth opens for
+        // the vowel that follows it.
+        t += consonant;
+        const auto vowel_it = mora.find("vowel");
+        const std::string vowel =
+            (vowel_it != mora.end() && vowel_it->is_string()) ? vowel_it->get<std::string>()
+                                                              : std::string{};
+        char shape = '\0';
+        if (vowel.size() == 1) {
+            const char c = static_cast<char>(std::tolower(static_cast<unsigned char>(vowel[0])));
+            if (c == 'a' || c == 'i' || c == 'u' || c == 'e' || c == 'o') shape = c;
+        }
+        moras.push_back({t, vowel_len, shape});
+        t += vowel_len;
+    };
+
+    for (const auto& phrase : plan.value("accent_phrases", json::array())) {
+        for (const auto& mora : phrase.value("moras", json::array())) push(mora);
+        // A phrase can end in a pause, which is a mora with no consonant and a
+        // silent vowel. It still advances time, so it cannot be skipped.
+        if (const auto pause = phrase.find("pause_mora");
+            pause != phrase.end() && !pause->is_null()) {
+            push(*pause);
+        }
+    }
+    return moras;
+}
+
+}  // namespace
+
 std::vector<std::uint8_t> Voicevox::synthesize(const std::string& text) const {
+    std::vector<Mora> ignored;
+    return synthesize(text, ignored);
+}
+
+std::vector<std::uint8_t> Voicevox::synthesize(const std::string& text,
+                                               std::vector<Mora>& timeline) const {
     std::vector<std::uint8_t> audio;
     if (text.empty() || !impl_->initialized) return audio;
 
@@ -220,6 +287,9 @@ std::vector<std::uint8_t> Voicevox::synthesize(const std::string& text) const {
         plan["intonationScale"] = config_.intonation;
         plan["outputStereo"] = false;
         plan_str = plan.dump();
+        // After the edits, so the timeline is scaled by the speed actually
+        // rendered rather than the one the query came back with.
+        timeline = timeline_from(plan);
     } catch (const std::exception& e) {
         log::warn(kTag, "could not edit audio_query: {}", e.what());
         voicevox_json_free(query);

@@ -73,17 +73,19 @@ inline QString presence_headline(Presence p) {
     return QStringLiteral("OBSERVING");
 }
 
-// One hue at several weights, exactly as the orb reads state from brightness:
-// resting is deep and quiet, hearing you is the full accent, thinking lifts,
-// responding goes almost white, remembering settles back toward the soft
-// highlight. The single blue is never traded for a second colour -- the
-// background differentiates by *motion*, not hue.
+// One hue at several weights -- resting is deep and quiet, thinking lifts,
+// responding is the full accent, remembering settles back toward the soft
+// highlight.
+//
+// Listening is the single exception, and the only green in the app: the one
+// state you need to read from across the room is whether she is hearing you,
+// and a weight of the same pink cannot carry that the way a different hue can.
 inline QColor presence_accent(Presence p) {
     switch (p) {
         case Presence::Observing:   return theme::kAccentDeep;
-        case Presence::Listening:   return theme::kAccent;
+        case Presence::Listening:   return theme::kLive;
         case Presence::Thinking:    return theme::kAccentSoft;
-        case Presence::Speaking:    return theme::kInk;
+        case Presence::Speaking:    return theme::kAccent;
         case Presence::Remembering: return theme::kAccentGlow;
         case Presence::Muted:       return theme::kFaint;
     }

@@ -13,6 +13,19 @@ models/
 voices/*.onnx
 voices/*.onnx.json
 
+# --- avatar ------------------------------------------------------------------
+# The VRM body and its VRoid Studio master. The model's own licence is
+# avatarPermission: onlyAuthor with redistribution and modification prohibited,
+# so it cannot live in a repo or ship in a release -- it is placed by hand,
+# exactly like the models above. See CLAUDE.md section 7.
+*.vrm
+*.vroid
+
+# --- agent notes -------------------------------------------------------------
+# Working notes for Claude: the architecture map, the invariants and the avatar
+# plan. Local to this checkout, not part of the published project.
+CLAUDE.md
+
 # --- VOICEVOX CORE -----------------------------------------------------------
 # Prebuilt engine + ONNX Runtime + Open JTalk dict + voice models. Fetched by
 # scripts/fetch_voicevox.sh instead.

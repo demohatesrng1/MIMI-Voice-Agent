@@ -18,9 +18,9 @@ namespace mimi::ui {
 // being asked something. It is also the only honest way to ask "what should I
 // call you" -- that question needs the name already given to offer a choice.
 //
-// Nothing here reaches a network. The account is a local file, which is exactly
-// what the screen says, because being asked for an email by an app that
-// promises to keep everything on the machine deserves an explanation.
+// Nothing here reaches a network, and nothing asks for an email: the identity
+// is a username, because an app that promises to keep everything on the machine
+// has no business holding the one field that identifies you off it.
 class AccountView : public QWidget {
     Q_OBJECT
 
@@ -38,7 +38,7 @@ protected:
 
 private:
     // The sign-up questions, in order.
-    enum Step { StepEmail = 0, StepPassword, StepUsername, StepName, StepCallYou };
+    enum Step { StepUsername = 0, StepPassword, StepName, StepCallYou };
 
     void buildWelcome();
     void buildSignUp();
@@ -60,7 +60,6 @@ private:
     QLabel* question_ = nullptr;
     QLabel* hint_ = nullptr;
     QLabel* error_ = nullptr;
-    QLineEdit* email_ = nullptr;
     QLineEdit* password_ = nullptr;
     QLineEdit* username_ = nullptr;
     QLineEdit* name_ = nullptr;
@@ -68,12 +67,12 @@ private:
     QPushButton* callUsername_ = nullptr;
     QPushButton* next_ = nullptr;
     QLabel* progress_ = nullptr;
-    int step_ = StepEmail;
+    int step_ = StepUsername;
     QPushButton* back_ = nullptr;
     QString preferred_;
 
     // Sign-in
-    QLineEdit* signInEmail_ = nullptr;
+    QLineEdit* signInUser_ = nullptr;
     QLineEdit* signInPassword_ = nullptr;
     QLabel* signInError_ = nullptr;
 };

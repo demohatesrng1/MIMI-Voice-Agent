@@ -6,6 +6,10 @@
 #include "ui/account_view.hpp"
 #include "ui/main_window.hpp"
 
+#ifdef MIMI_HAS_AVATAR
+#include "ui/avatar_scheme.hpp"
+#endif
+
 #include <QApplication>
 #include <QFile>
 #include <QEventLoop>
@@ -24,6 +28,14 @@ QString load_stylesheet() {
 
 int main(int argc, char** argv) {
     mimi::log::configure_from_env();
+
+#ifdef MIMI_HAS_AVATAR
+    // Both of these have to happen before the QApplication exists: Qt refuses
+    // to register a URL scheme once WebEngine has started, and WebEngine needs
+    // the shared GL context attribute set on the application that will host it.
+    mimi::ui::AvatarScheme::registerScheme();
+    QApplication::setAttribute(Qt::AA_ShareOpenGLContexts);
+#endif
 
     QApplication app(argc, argv);
     app.setApplicationName(QStringLiteral("Mimi"));

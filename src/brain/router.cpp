@@ -947,6 +947,11 @@ Reply Router::classify_then_route(const std::string& utterance) {
     ChatOptions options;
     options.schema = build_intent_schema();
     options.max_tokens = 200;  // room for several steps, not just one
+    // Classification is the hot path -- almost everything said to her is a
+    // command -- and it is a fixed schema, which Ollama constrains the decoding
+    // to whatever the model's size. So it runs on the small one when there is
+    // one; classifier() falls back to the main model when there is not.
+    options.model = ollama_.classifier();
 
     const auto result = ollama_.chat(kIntentPromptText, utterance, options);
     if (!result) {

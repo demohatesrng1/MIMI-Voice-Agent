@@ -85,11 +85,11 @@ WorkspaceDock::WorkspaceDock(QWidget* parent) : QWidget(parent) {
 
     tag_ = new QLabel(QString::fromUtf8(kGeneral.tag));
     tag_->setObjectName(QStringLiteral("workspaceTag"));
-    tag_->setAlignment(Qt::AlignHCenter);
+    tag_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     tag_->setCursor(Qt::PointingHandCursor);
     tag_->setToolTip(QStringLiteral("Adapts to what you're doing — tap to switch"));
     tag_->installEventFilter(this);
-    column->addWidget(tag_, 0, Qt::AlignHCenter);
+    column->addWidget(tag_, 0, Qt::AlignLeft);
 
     tools_ = new QWidget;
     toolsRow_ = new QHBoxLayout(tools_);
@@ -136,7 +136,6 @@ void WorkspaceDock::rebuild(Context context) {
         delete item;
     }
 
-    toolsRow_->addStretch(1);
     for (const Tool& tool : setFor(context).tools) {
         auto* chip = new Chip(QString::fromUtf8(tool.label));
         const QString utterance = QString::fromUtf8(tool.utterance);
@@ -145,6 +144,37 @@ void WorkspaceDock::rebuild(Context context) {
         toolsRow_->addWidget(chip);
     }
     toolsRow_->addStretch(1);
+    fitChips();
+}
+
+// The dock lives under the caption column now, not across the whole window, so
+// a context with four tools can want more width than it has. A QHBoxLayout
+// answers that by compressing everything past its minimum, which draws chips
+// overlapping each other; dropping the ones that do not fit is the honest
+// version -- the command palette still has all of them.
+void WorkspaceDock::fitChips() {
+    const int available = width();
+    if (available <= 0) return;
+    constexpr int kSpacing = 8;
+    int used = 0;
+    bool full = false;
+    for (int i = 0; i < toolsRow_->count(); ++i) {
+        QWidget* chip = toolsRow_->itemAt(i)->widget();
+        if (chip == nullptr) continue;   // the trailing stretch
+        const int w = chip->sizeHint().width();
+        if (full || used + w > available) {
+            full = true;
+            chip->hide();
+            continue;
+        }
+        chip->show();
+        used += w + kSpacing;
+    }
+}
+
+void WorkspaceDock::resizeEvent(QResizeEvent* event) {
+    QWidget::resizeEvent(event);
+    fitChips();
 }
 
 void WorkspaceDock::crossfadeTo(Context context) {

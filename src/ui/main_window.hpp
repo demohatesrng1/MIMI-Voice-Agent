@@ -111,6 +111,10 @@ private:
     QTimer* rememberTimer_ = nullptr;
     QTimer* contextTimer_ = nullptr;
     bool remembering_ = false;
+    // Whether any non-zero audio has ever arrived. A denied microphone yields
+    // exact zeros for ever, so this is the backstop for the case where the
+    // permission reads as granted but the input device is silent anyway.
+    bool heardAnything_ = false;
     std::unique_ptr<audio::Capture> capture_;
     std::unique_ptr<voice::Listener> listener_;
     std::unique_ptr<voice::Speaker> speaker_;

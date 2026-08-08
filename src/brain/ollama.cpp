@@ -60,6 +60,10 @@ Ollama::Ollama(Config config) : config_(std::move(config)), impl_(std::make_uniq
     // a remote Ollama, and for testing what happens when there isn't one.
     if (const char* host = std::getenv("MIMI_OLLAMA_HOST")) config_.host = host;
     if (const char* model = std::getenv("MIMI_OLLAMA_MODEL")) config_.model = model;
+    // Deliberately accepts the empty string: MIMI_FAST_MODEL="" turns the small
+    // classifier off, which is how the speed/accuracy trade-off gets measured
+    // rather than assumed.
+    if (const char* fast = std::getenv("MIMI_FAST_MODEL")) config_.fast_model = fast;
     impl_->endpoint = parse(config_.host);
     log::debug(kTag, "{}:{} model={}", impl_->endpoint.host, impl_->endpoint.port,
                config_.model);
@@ -73,13 +77,31 @@ bool Ollama::reachable() const {
     return response && response->status == 200;
 }
 
-bool Ollama::model_available() const {
-    const auto pulled = models();
-    // Ollama reports "gemma3n:e4b"; a config may reasonably omit the tag.
+namespace {
+
+// Ollama reports "gemma3n:e4b"; a config may reasonably omit the tag.
+bool pulled_matches(const std::vector<std::string>& pulled, const std::string& wanted) {
+    if (wanted.empty()) return false;
     return std::any_of(pulled.begin(), pulled.end(), [&](const std::string& name) {
-        return name == config_.model || name.rfind(config_.model + ":", 0) == 0 ||
-               config_.model.rfind(name, 0) == 0;
+        return name == wanted || name.rfind(wanted + ":", 0) == 0 ||
+               wanted.rfind(name, 0) == 0;
     });
+}
+
+}  // namespace
+
+bool Ollama::model_available() const { return pulled_matches(models(), config_.model); }
+
+// The classifier is optional. When it is missing everything still works, just
+// with the big model doing the small job, so this is a question and never an
+// error.
+bool Ollama::fast_model_available() const {
+    if (config_.fast_model.empty() || config_.fast_model == config_.model) return false;
+    return pulled_matches(models(), config_.fast_model);
+}
+
+std::string Ollama::classifier() const {
+    return fast_model_available() ? config_.fast_model : config_.model;
 }
 
 bool Ollama::ensure_running(std::chrono::seconds wait) {
@@ -134,7 +156,7 @@ json build_request(const Ollama::Config& config, const std::string& system,
     messages.push_back({{"role", "user"}, {"content", user}});
 
     json request{
-        {"model", config.model},
+        {"model", options.model.empty() ? config.model : options.model},
         {"messages", std::move(messages)},
         {"stream", stream},
         {"keep_alive", config.keep_alive},
@@ -332,6 +354,21 @@ void Ollama::warmup() const {
     const auto result = chat("", "hi", options);
     log::info(kTag, "{} {}", config_.model,
               result ? "ready" : "unavailable: " + result.error);
+
+    // Warm the classifier too, and warm it *second* so it is the most recently
+    // touched: it is on the path of every single utterance, and paying its load
+    // cost on the first thing the user says would undo the point of it.
+    if (fast_model_available()) {
+        ChatOptions fast;
+        fast.max_tokens = 1;
+        fast.model = config_.fast_model;
+        const auto quick = chat("", "hi", fast);
+        log::info(kTag, "{} {} (classifier)", config_.fast_model,
+                  quick ? "ready" : "unavailable: " + quick.error);
+    } else if (!config_.fast_model.empty()) {
+        log::info(kTag, "no {} -- classifying with {} instead (slower; `ollama pull {}`)",
+                  config_.fast_model, config_.model, config_.fast_model);
+    }
 }
 
 }  // namespace mimi::brain

@@ -99,13 +99,12 @@ Accounts::Accounts() { path_ = paths::data_file("account.json").string(); }
 
 bool Accounts::exists() const {
     const auto stored = read(path_);
-    return stored.contains("email") && !stored.value("email", "").empty();
+    return !stored.value("username", std::string{}).empty();
 }
 
 Account Accounts::load() const {
     const auto stored = read(path_);
     Account account;
-    account.email = stored.value("email", "");
     account.username = stored.value("username", "");
     account.name = stored.value("name", "");
     account.preferred = stored.value("preferred", "");
@@ -115,11 +114,10 @@ Account Accounts::load() const {
     return account;
 }
 
-bool Accounts::sign_up(const std::string& email, const std::string& password,
-                       const std::string& username, const std::string& name,
-                       const std::string& preferred) {
+bool Accounts::sign_up(const std::string& username, const std::string& password,
+                       const std::string& name, const std::string& preferred) {
     if (exists()) return false;
-    if (trim(email).empty() || password.empty() || trim(username).empty()) return false;
+    if (trim(username).empty() || password.empty()) return false;
 
     std::vector<unsigned char> salt(kSaltBytes);
     if (SecRandomCopyBytes(kSecRandomDefault, salt.size(), salt.data()) != errSecSuccess) {
@@ -130,7 +128,6 @@ bool Accounts::sign_up(const std::string& email, const std::string& password,
     if (digest.empty()) return false;
 
     const json stored{
-        {"email", lowercase(trim(email))},
         {"username", trim(username)},
         {"name", trim(name)},
         {"preferred", trim(preferred).empty() ? trim(name) : trim(preferred)},
@@ -145,11 +142,14 @@ bool Accounts::sign_up(const std::string& email, const std::string& password,
     return true;
 }
 
-bool Accounts::verify(const std::string& email, const std::string& password) const {
+bool Accounts::verify(const std::string& username, const std::string& password) const {
     const auto stored = read(path_);
-    const std::string known = stored.value("email", "");
+    const std::string known = stored.value("username", "");
     if (known.empty()) return false;  // no account is not a free pass
-    if (lowercase(trim(email)) != known) return false;
+
+    // Case-insensitive, because a username you typed months ago is remembered
+    // as a word, not as a capitalisation.
+    if (lowercase(trim(username)) != lowercase(known)) return false;
 
     const auto salt = from_hex(stored.value("salt", ""));
     const std::string digest = stored.value("digest", "");
@@ -157,10 +157,41 @@ bool Accounts::verify(const std::string& email, const std::string& password) con
     return same_digest(derive(password, salt), digest);
 }
 
+bool Accounts::set_password(const std::string& password) {
+    auto stored = read(path_);
+    if (stored.value("username", std::string{}).empty()) return false;
+    if (password.empty()) return false;
+
+    // A new salt as well as a new digest: reusing the old salt would leak that
+    // the password changed to anyone who had seen the file before.
+    std::vector<unsigned char> salt(kSaltBytes);
+    if (SecRandomCopyBytes(kSecRandomDefault, salt.size(), salt.data()) != errSecSuccess) {
+        return false;
+    }
+    const std::string digest = derive(password, salt);
+    if (digest.empty()) return false;
+
+    stored["salt"] = to_hex(salt.data(), salt.size());
+    stored["digest"] = digest;
+    stored["iterations"] = kIterations;
+    // Accounts created before the switch carry an email. Drop it the first time
+    // the file is rewritten -- nothing reads it any more, and leaving personal
+    // data lying in a file because it is merely unused is how it ends up
+    // somewhere it should not be.
+    stored.erase("email");
+
+    std::ofstream out(path_, std::ios::trunc);
+    if (!out) return false;
+    out << stored.dump(2) << "\n";
+    log::info(kTag, "password changed");
+    return true;
+}
+
 bool Accounts::set_preferred(const std::string& preferred) {
     auto stored = read(path_);
-    if (!stored.contains("email")) return false;
+    if (stored.value("username", std::string{}).empty()) return false;
     stored["preferred"] = trim(preferred);
+    stored.erase("email");
     std::ofstream out(path_, std::ios::trunc);
     if (!out) return false;
     out << stored.dump(2) << "\n";

@@ -23,6 +23,15 @@ struct ChatOptions {
     std::optional<int> max_tokens;
     std::optional<float> temperature;
     std::vector<Message> history;
+    // Answer this one with a different model. Empty means the configured one.
+    //
+    // Most of what she is asked is a command, and deciding *which* command is a
+    // classification into a fixed schema -- a job a 1B model does as well as a
+    // 7B one, several times faster, because Ollama constrains the decoding to
+    // the schema either way. Reserving the big model for open conversation is
+    // the difference between a two-second pause on every "turn the volume up"
+    // and no pause at all.
+    std::string model;
 };
 
 struct ChatResult {
@@ -44,6 +53,18 @@ public:
     struct Config {
         std::string host = "http://localhost:11434";
         std::string model = "gemma3n:e4b";
+        // The classifier. Small on purpose -- see ChatOptions::model. Optional:
+        // when it is not pulled, fast_model_available() is false and everything
+        // falls back to `model`, which is slower but identical in behaviour.
+        // Pull it with `ollama pull llama3.2:3b`.
+        //
+        // 3B, not 1B, and the size was measured rather than picked. gemma3:1b
+        // classifies 3-5x faster and got every one of a five-case sample wrong:
+        // it answered "I am a bit tired today" with the time and turned "dim
+        // the light" into mute. llama3.2:3b agrees with the 7B model on 4 of
+        // those 5 at roughly half its latency, which is the trade worth making.
+        // Compare candidates with MIMI_FAST_MODEL=... ./build/mimi_route "..."
+        std::string fast_model = "llama3.2:3b";
         std::string embed_model = "nomic-embed-text";
         // Holds the model in RAM between turns. Without it Ollama unloads after
         // ~5 minutes and the next question pays the whole load cost again.
@@ -65,6 +86,11 @@ public:
 
     // False when the configured model is not among the pulled ones.
     bool model_available() const;
+    // Whether the small classifier is pulled. Optional -- see Config::fast_model.
+    bool fast_model_available() const;
+    // The model classification should actually use: the fast one when it is
+    // there, otherwise the main one.
+    std::string classifier() const;
     std::vector<std::string> models() const;
 
     ChatResult chat(const std::string& system, const std::string& user,

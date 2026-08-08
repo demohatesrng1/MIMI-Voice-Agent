@@ -1,13 +1,17 @@
-/* Mimi — neutral grey, with structure carried by hairlines.
-   The earlier theme built depth out of light: near-black surfaces, no borders,
-   and a glow wherever an edge was needed. On a real display that reads as haze.
-   Surfaces here sit well off black so a 1px line is actually visible, and the
-   accent is spent on one thing at a time — the active tab, a focused field —
-   rather than on decoration. */
+/* Mimi — a dark stage, and watermelon.
+
+   She is the subject, so the surface around her is a stage: near-black, out of
+   the way, with the chrome floating on top of it as rounded glass rather than
+   carved into it as boxes. Depth comes from the lift of white on glass and a
+   brighter hairline on its top edge.
+
+   Two accents, and the discipline is the point. Watermelon pink (#ff4d6d)
+   carries everything active. Rind green is reserved for exactly one meaning —
+   she is hearing you right now — and appears nowhere else in this file. */
 
 QWidget {
   background: transparent;
-  color: #f2f2f4;
+  color: #f5f5f7;
   /* The system UI face, named explicitly. Nothing set a family at all before,
      so Qt fell back to its own default and none of the weights or the spacing
      matched what the rest of macOS draws. ".AppleSystemUIFont" is the SF the
@@ -27,31 +31,31 @@ QLabel { background: transparent; }
    bar" means. Any distinct band here re-creates stacked web chrome. */
 #titleBar {
   background: transparent;
-  border-bottom: 1px solid #303033;
+  border-bottom: 1px solid #2a2c31;
 }
 
 /* Her name, set like a product name rather than a label: near-white, tight,
-   slightly tracked. The old value was a blue-grey (#f2f2f4) borrowed from the
+   slightly tracked. The old value was a blue-grey (#f5f5f7) borrowed from the
    accent ramp, which read as a disabled control sitting next to real ones. */
 #wordmark {
   font-size: 18.5px;
   font-weight: 600;
   letter-spacing: 0.2px;
-  color: #f2f2f4;
+  color: #f5f5f7;
 }
 
 /* The hairline between her name and the places you can go. */
-#chromeRule { background: #3a3a3e; }
+#chromeRule { background: #2a2c31; }
 
 /* Status: a dot and a word, on the surface. No capsule -- a raised pill around
    two words is chrome around chrome, and it was the loudest thing in the bar. */
 #statusPill { background: transparent; }
-#statusDot  { font-size: 8px; color: #3b82f6; }
+#statusDot  { font-size: 8px; color: #ff4d6d; }
 #statusText {
   font-size: 17px;
   font-weight: 500;
   letter-spacing: 0.2px;
-  color: #7f8899;
+  color: #91929b;
 }
 
 /* Text-weight controls. Flat until touched, which is what keeps a toolbar
@@ -59,8 +63,8 @@ QLabel { background: transparent; }
 #mutePill {
   background: transparent;
   border: none;
-  border-radius: 5px;
-  color: #7f8899;
+  border-radius: 11px;
+  color: #91929b;
   font-size: 17px;
   font-weight: 500;
   padding: 0px 10px;
@@ -69,47 +73,54 @@ QLabel { background: transparent; }
 /* Interrupting her. Present only while she talks, so it can afford to be the
    one thing in the bar carrying colour. */
 #stopBtn {
-  background: rgba(255, 69, 96, 0.14);
+  background: rgba(229, 72, 77, 0.14);
   border: none;
-  border-radius: 5px;
-  color: #ff8a9a;
+  border-radius: 11px;
+  color: #ff8fa3;
   font-size: 17px;
   font-weight: 600;
   padding: 0px 12px;
   margin-right: 6px;
 }
-#stopBtn:hover { background: rgba(255, 69, 96, 0.24); color: #ffb3bd; }
-#mutePill:hover   { background: rgba(255, 255, 255, 0.06); color: #f2f2f4; }
-#mutePill:checked { background: rgba(255, 69, 96, 0.13); color: #ff8a9a; }
+#stopBtn:hover { background: rgba(229, 72, 77, 0.26); color: #ffc2cc; }
+#mutePill:hover   { background: rgba(255, 255, 255, 0.06); color: #f5f5f7; }
+#mutePill:checked { background: rgba(229, 72, 77, 0.13); color: #ff8fa3; }
 
 /* -------------------------------------------------------------------- home */
 
 #home { background: transparent; }
 
-/* The single most important word on screen: what she is doing right now. */
-/* What she is doing, as a quiet label. It was set in the accent, which spends
-   the one colour in the palette on a caption that is always on screen. */
+/* The caption column. Left-aligned against her now rather than centred under
+   an orb, and set considerably larger: with the chrome stripped back this type
+   *is* the interface, and it has to be readable from as far away as she is
+   visible from. */
+
+/* The state, as a small tracked label over the exchange. It sits where a
+   speaker name would in a subtitle, because that is what it is. */
 #heroState {
-  font-size: 17px;
-  font-weight: 600;
-  letter-spacing: 5px;
-  color: #cfcfd4;
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 4px;
+  color: #ff8fa3;
 }
 
+/* What you said: quiet, above, in quotes. Deliberately recessive -- you know
+   what you said, and it is only here so her answer has something to answer. */
 #heroSaid {
-  font-size: 20px;
-  color: #6b7689;
+  font-size: 19px;
+  font-weight: 400;
+  color: #7a7b85;
   letter-spacing: 0.2px;
 }
 
-/* Her answer is the thing you actually came to read, so it is the largest
-   type in the app by a clear margin. Display face, light weight: a headline,
-   not a paragraph. */
+/* Her answer is the thing you actually came to read, so it is the largest type
+   in the app by a clear margin. Display face, light weight: a headline, not a
+   paragraph. */
 #heroReply {
-  font-size: 33px;
+  font-size: 40px;
   font-weight: 300;
-  line-height: 150%;
-  color: #f2f2f4;
+  line-height: 144%;
+  color: #f5f5f7;
 }
 
 /* ----------------------------------------------------------- workspace dock */
@@ -120,14 +131,14 @@ QLabel { background: transparent; }
   font-size: 15px;
   font-weight: 700;
   letter-spacing: 3px;
-  color: #a6a6ad;
+  color: #91929b;
 }
 
 /* --------------------------------------------------------------- canvas hint */
 
 #canvasHint {
   font-size: 16px;
-  color: #a6a6ad;
+  color: #91929b;
   letter-spacing: 0.4px;
 }
 
@@ -137,12 +148,12 @@ QLabel { background: transparent; }
   font-size: 16px;
   font-weight: 700;
   letter-spacing: 4px;
-  color: #609cf8;
+  color: #ff6b85;
 }
 
 #sectionLead {
   font-size: 18px;
-  color: #cfcfd4;
+  color: #c9cad1;
   line-height: 165%;
 }
 
@@ -150,12 +161,12 @@ QLabel { background: transparent; }
   font-size: 15px;
   font-weight: 600;
   letter-spacing: 2.5px;
-  color: #a6a6ad;
+  color: #91929b;
 }
 
 #emptyState {
   font-size: 18px;
-  color: #a6a6ad;
+  color: #91929b;
   line-height: 175%;
 }
 
@@ -168,15 +179,15 @@ QLabel { background: transparent; }
 #skillCard {
   background: rgba(255, 255, 255, 0.04);
   border: none;
-  border-radius: 14px;
+  border-radius: 18px;
   text-align: left;
 }
 #skillCard:hover   { background: rgba(255, 255, 255, 0.07); }
-#skillCard:pressed { background: rgba(61, 139, 255, 0.12); }
+#skillCard:pressed { background: rgba(255, 77, 109, 0.12); }
 
-#skillTitle  { font-size: 18px; font-weight: 600; color: #f2f2f4; }
-#skillPhrase { font-size: 17px; color: #93b8f8; }
-#skillDetail { font-size: 16.5px; color: #a6a6ad; }
+#skillTitle  { font-size: 18px; font-weight: 600; color: #f5f5f7; }
+#skillPhrase { font-size: 17px; color: #ff8fa3; }
+#skillDetail { font-size: 16.5px; color: #91929b; }
 
 /* ---------------------------------------------------------------- composer */
 
@@ -184,25 +195,25 @@ QLabel { background: transparent; }
 QLineEdit#commandField {
   background: transparent;
   border: none;
-  color: #f2f2f4;
+  color: #f5f5f7;
   font-size: 20px;
-  selection-background-color: #1e4ea8;
+  selection-background-color: #c2183c;
 }
 
 /* --------------------------------------------------------- command palette */
 
 /* The single command surface: a raised glass card on a dimmed scrim. */
 #palettePanel {
-  background: rgba(22, 26, 35, 0.98);
-  border-radius: 16px;
+  background: rgba(20, 21, 24, 0.96);
+  border-radius: 22px;
 }
 QLineEdit#paletteField {
   background: transparent;
   border: none;
-  color: #f2f2f4;
+  color: #f5f5f7;
   font-size: 22px;
   padding: 16px 20px;
-  selection-background-color: #1e4ea8;
+  selection-background-color: #c2183c;
 }
 QListWidget#paletteList {
   background: transparent;
@@ -212,13 +223,13 @@ QListWidget#paletteList {
   font-size: 18px;
 }
 QListWidget#paletteList::item {
-  color: #f2f2f4;
+  color: #f5f5f7;
   padding: 9px 12px;
-  border-radius: 8px;
+  border-radius: 18px;
 }
 QListWidget#paletteList::item:selected {
-  background: rgba(61, 139, 255, 0.16);
-  color: #f2f2f4;
+  background: rgba(255, 77, 109, 0.18);
+  color: #f5f5f7;
 }
 
 /* ------------------------------------------------------------- scrollbars */
@@ -233,15 +244,15 @@ QScrollBar::handle:vertical {
   border-radius: 3px;
   min-height: 40px;
 }
-QScrollBar::handle:vertical:hover { background: rgba(61, 139, 255, 0.45); }
+QScrollBar::handle:vertical:hover { background: rgba(255, 77, 109, 0.50); }
 QScrollBar::add-line, QScrollBar::sub-line { height: 0; }
 QScrollBar::add-page, QScrollBar::sub-page { background: transparent; }
 
 QToolTip {
-  background: #2b2b2e;
-  color: #d7dfe9;
+  background: #212328;
+  color: #c9cad1;
   border: none;
-  border-radius: 6px;
+  border-radius: 12px;
   padding: 6px 10px;
   font-size: 17px;
 }

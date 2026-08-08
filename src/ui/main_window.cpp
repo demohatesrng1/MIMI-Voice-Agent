@@ -5,6 +5,9 @@
 #include "core/log.hpp"
 #include "core/paths.hpp"
 #include "ui/ambient.hpp"
+#ifdef MIMI_HAS_AVATAR
+#include "ui/avatar_view.hpp"
+#endif
 #include "ui/command_bar.hpp"
 #include "ui/command_palette.hpp"
 #include "brain/accessibility.hpp"
@@ -227,6 +230,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     bridge_ = new VoiceBridge(this);
     connect(bridge_, &VoiceBridge::stateChanged, this, &MainWindow::onState);
     connect(bridge_, &VoiceBridge::levelChanged, this, [this](float rms, float) {
+        if (rms > 0.0f) heardAnything_ = true;
         home_->setLevel(rms);
         puck_->setLevel(rms);
         ambient_->setLevel(rms);
@@ -234,6 +238,11 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     connect(bridge_, &VoiceBridge::heard, this, &MainWindow::onHeard);
     connect(bridge_, &VoiceBridge::bargedIn, this, [this] {
         if (speaker_) speaker_->stop();
+        // The audio is gone; her mouth has to stop with it, or she carries on
+        // silently mouthing the rest of an answer nobody can hear.
+#ifdef MIMI_HAS_AVATAR
+        if (auto* avatar = home_->avatar()) avatar->clearVisemes();
+#endif
     });
 
     navigate(PageHome);
@@ -375,6 +384,9 @@ QWidget* MainWindow::buildTitleBar() {
     connect(stopBtn_, &QPushButton::clicked, this, [this] {
         if (speaker_) speaker_->stop();
         if (listener_) listener_->set_speaking(false);
+#ifdef MIMI_HAS_AVATAR
+        if (auto* avatar = home_->avatar()) avatar->clearVisemes();
+#endif
     });
     layout->addWidget(stopBtn_);
 
@@ -463,7 +475,39 @@ void MainWindow::startVoice() {
         capture_ = std::make_unique<audio::Capture>();
         capture_->start();
 
+        // Say so when she cannot hear.
+        //
+        // A denied microphone does not fail: CoreAudio opens the device, runs
+        // the callback and hands over a stream of exact zeros for ever. Every
+        // layer above behaves perfectly on silence -- the VAD finds no speech,
+        // the spotter is never asked, and she waits, apparently working, for a
+        // wake word that can never arrive. It is indistinguishable from a bug
+        // unless something checks, so this checks.
+        if (brain::ax::microphone_access() != brain::ax::Access::Granted) {
+            note(QStringLiteral("Mimi cannot hear you — microphone access is off"));
+            log::warn(kTag, "microphone access is not granted; she will hear only silence");
+            brain::ax::open_microphone_settings();
+        }
+
         speaker_ = std::make_unique<voice::Speaker>(voice::Speaker::Config{});
+#ifdef MIMI_HAS_AVATAR
+        // Lip sync. The timeline is the synthesiser's own prosody plan, so her
+        // mouth is right by construction rather than chasing the waveform.
+        // Fired from whichever thread started playback, hence the hop to the
+        // GUI thread before anything touches a widget.
+        speaker_->on_visemes([this](const std::vector<voice::Mora>& timeline, double delay) {
+            auto* avatar = home_ != nullptr ? home_->avatar() : nullptr;
+            if (avatar == nullptr) return;
+            QVector<AvatarView::Mora> track;
+            track.reserve(static_cast<int>(timeline.size()));
+            for (const voice::Mora& mora : timeline) {
+                track.append(AvatarView::Mora{mora.t, mora.length, mora.vowel});
+            }
+            QMetaObject::invokeMethod(
+                avatar, [avatar, track, delay] { avatar->playVisemes(track, delay); },
+                Qt::QueuedConnection);
+        });
+#endif
         listener_ = std::make_unique<voice::Listener>(*capture_, std::move(config));
         bridge_->attach(*listener_);
 
@@ -475,6 +519,16 @@ void MainWindow::startVoice() {
 
             listener_->warmup();
             listener_->start();
+
+            // Even a silent room is not digitally silent. If nothing but exact
+            // zeros has arrived after ten seconds of listening, the microphone
+            // is muted, missing or blocked -- and she would otherwise sit there
+            // looking attentive for ever.
+            QTimer::singleShot(10000, this, [this] {
+                if (heardAnything_ || listener_ == nullptr) return;
+                note(QStringLiteral("Silence on the microphone — she cannot hear you"));
+                log::warn(kTag, "no non-zero audio in 10s: input is muted or blocked");
+            });
 
             if (!brain_up) {
                 note(QStringLiteral("Could not start Ollama"));

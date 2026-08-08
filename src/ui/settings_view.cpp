@@ -222,7 +222,7 @@ void SettingsView::refresh() {
     const brain::Account account = brain::Accounts().load();
     plain(account_, account.valid()
                         ? QString::fromStdString(account.preferred.empty()
-                                                     ? account.email
+                                                     ? account.username
                                                      : account.preferred)
                         : QStringLiteral("Not signed in"));
 

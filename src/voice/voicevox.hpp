@@ -15,6 +15,22 @@ struct VoicevoxStyle {
     int id = 0;           // style id passed to synthesis
 };
 
+// One mora of the synthesised speech: when its vowel starts, how long the
+// vowel is held, and which vowel it is.
+//
+// This falls out of synthesis for free. VOICEVOX plans the prosody before it
+// renders any audio, and that plan is a list of moras with explicit consonant
+// and vowel durations -- so the mouth shapes and their timings are known
+// exactly, rather than being guessed at from the waveform afterwards. It is
+// what drives the avatar's lip sync.
+struct Mora {
+    double t = 0;       // seconds from the start of the clip
+    double length = 0;  // how long the vowel is held
+    // 'a', 'i', 'u', 'e', 'o', or '\0' for a mora with no open mouth shape:
+    // ん, the geminate っ, and pauses all close it.
+    char vowel = '\0';
+};
+
 // Offline Japanese TTS through the embedded VOICEVOX CORE library.
 //
 // This does NOT talk to the VOICEVOX.app HTTP engine on :50021 -- it links
@@ -62,6 +78,10 @@ public:
     // Japanese text -> 24 kHz mono WAV bytes. Empty on any failure, so callers
     // can simply fall through to another backend.
     std::vector<std::uint8_t> synthesize(const std::string& text) const;
+    // The same, also handing back the mora timeline the prosody plan was built
+    // from. `timeline` is left untouched when synthesis fails.
+    std::vector<std::uint8_t> synthesize(const std::string& text,
+                                         std::vector<Mora>& timeline) const;
 
     const Config& config() const noexcept { return config_; }
     void set_style(int id) { config_.style_id = id; }

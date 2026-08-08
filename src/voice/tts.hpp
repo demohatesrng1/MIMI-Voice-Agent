@@ -59,6 +59,19 @@ public:
     // turn and open the follow-up window.
     void speak(const std::string& text, std::function<void(bool completed)> on_finished = {});
 
+    // Fired the instant playback starts, with the mora timeline of what is
+    // about to be heard and how long until the first sample is audible. This
+    // is what the avatar's mouth is driven from.
+    //
+    // Only the VOICEVOX path can offer it: AVSpeechSynthesizer reports word
+    // ranges as it goes, not phonemes ahead of time, so on the fallback voice
+    // the handler simply never runs and the avatar leaves her mouth closed.
+    // Installed once, before the first speak(); it runs on whichever thread
+    // started playback.
+    using VisemeHandler =
+        std::function<void(const std::vector<Mora>& timeline, double delay_seconds)>;
+    void on_visemes(VisemeHandler handler);
+
     // Cuts playback immediately. Safe to call when nothing is speaking.
     void stop();
 
@@ -83,6 +96,7 @@ private:
     bool speak_voicevox(const std::string& text, std::uint64_t generation);
 
     Config config_;
+    VisemeHandler on_visemes_;
     std::unique_ptr<Impl> impl_;
 };
 

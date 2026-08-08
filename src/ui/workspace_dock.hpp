@@ -43,7 +43,14 @@ Q_SIGNALS:
 protected:
     bool eventFilter(QObject* watched, QEvent* event) override;
 
+protected:
+    // Chips that will not fit are hidden rather than squeezed -- see fitChips().
+    void resizeEvent(QResizeEvent* event) override;
+
 private:
+    // Hides any tool that would overflow the dock's width.
+    void fitChips();
+
     void rebuild(Context context);
     void crossfadeTo(Context context);
 

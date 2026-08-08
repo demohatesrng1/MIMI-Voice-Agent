@@ -186,7 +186,7 @@ void AccountView::buildWelcome() {
     start->setFixedWidth(kColumnWidth);
     connect(start, &QPushButton::clicked, this, [this] {
         screens_->setCurrentIndex(1);
-        showStep(StepEmail);
+        showStep(StepUsername);
     });
     column->addWidget(start, 0, Qt::AlignHCenter);
     column->addSpacing(10);
@@ -282,14 +282,13 @@ void AccountView::buildSignUp() {
     column->addWidget(hint_);
     column->addSpacing(26);
 
-    email_ = field(QStringLiteral("you@example.com"));
     password_ = field(QStringLiteral("At least 8 characters"), true);
     username_ = field(QStringLiteral("username"));
     name_ = field(QStringLiteral("Your name"));
 
     steps_ = new QStackedWidget;
     steps_->setFixedWidth(kColumnWidth);
-    for (QLineEdit* edit : {email_, password_, username_, name_}) {
+    for (QLineEdit* edit : {username_, password_, name_}) {
         auto* holder = new QWidget;
         auto* row = new QVBoxLayout(holder);
         row->setContentsMargins(0, 0, 0, 0);
@@ -344,7 +343,7 @@ void AccountView::goBack() {
     // Step by step on the way back, exactly as it went forward. Answers already
     // given are left in their fields, so returning to fix one does not discard
     // the rest.
-    if (step_ == StepEmail) {
+    if (step_ == StepUsername) {
         screens_->setCurrentIndex(0);
         return;
     }
@@ -355,25 +354,20 @@ void AccountView::showStep(int step) {
     step_ = step;
     error_->clear();
     steps_->setCurrentIndex(step);
-    progress_->setText(QStringLiteral("STEP %1 OF 5").arg(step + 1));
+    progress_->setText(QStringLiteral("STEP %1 OF 4").arg(step + 1));
     next_->setVisible(step != StepCallYou);
 
     switch (step) {
-        case StepEmail:
-            question_->setText(QStringLiteral("What's your email?"));
-            hint_->setText(QStringLiteral("Used to sign in. It stays on this Mac."));
-            email_->setFocus();
+        case StepUsername:
+            question_->setText(QStringLiteral("Pick a username"));
+            hint_->setText(QStringLiteral("This is how you sign in. Short, and yours."));
+            username_->setFocus();
             break;
         case StepPassword:
             question_->setText(QStringLiteral("Choose a password"));
             hint_->setText(QStringLiteral(
                 "Stored only as a hash — never as the password itself."));
             password_->setFocus();
-            break;
-        case StepUsername:
-            question_->setText(QStringLiteral("Pick a username"));
-            hint_->setText(QStringLiteral("Short, and yours."));
-            username_->setFocus();
             break;
         case StepName:
             question_->setText(QStringLiteral("What's your name?"));
@@ -401,25 +395,15 @@ void AccountView::fail(const QString& message) { error_->setText(message); }
 void AccountView::advance() {
     error_->clear();
     switch (step_) {
-        case StepEmail: {
-            const QString value = email_->text().trimmed();
-            // Enough of a check to catch a typo, not a validator pretending to
-            // know which addresses exist.
-            if (!value.contains('@') || value.endsWith('@') || value.startsWith('@')) {
-                fail(QStringLiteral("That doesn't look like an email address."));
-                return;
-            }
-            break;
-        }
-        case StepPassword:
-            if (password_->text().size() < 8) {
-                fail(QStringLiteral("Use at least 8 characters."));
-                return;
-            }
-            break;
         case StepUsername:
             if (username_->text().trimmed().isEmpty()) {
                 fail(QStringLiteral("Pick something."));
+                return;
+            }
+            break;
+        case StepPassword:
+            if (password_->text().size() < 8) {
+                fail(QStringLiteral("Use at least 8 characters."));
                 return;
             }
             break;
@@ -437,9 +421,8 @@ void AccountView::advance() {
 
 void AccountView::finishSignUp() {
     const bool created =
-        accounts_.sign_up(email_->text().toStdString(), password_->text().toStdString(),
-                          username_->text().toStdString(), name_->text().toStdString(),
-                          preferred_.toStdString());
+        accounts_.sign_up(username_->text().toStdString(), password_->text().toStdString(),
+                          name_->text().toStdString(), preferred_.toStdString());
     if (!created) {
         fail(QStringLiteral("Could not create the account."));
         return;
@@ -481,9 +464,9 @@ void AccountView::buildSignIn() {
     column->addWidget(subdued(QStringLiteral("Sign in to unlock Mimi on this Mac.")));
     column->addSpacing(30);
 
-    signInEmail_ = field(QStringLiteral("you@example.com"));
-    signInEmail_->setFixedWidth(kColumnWidth);
-    column->addWidget(signInEmail_, 0, Qt::AlignHCenter);
+    signInUser_ = field(QStringLiteral("Username"));
+    signInUser_->setFixedWidth(kColumnWidth);
+    column->addWidget(signInUser_, 0, Qt::AlignHCenter);
     column->addSpacing(10);
 
     signInPassword_ = field(QStringLiteral("Password"), true);
@@ -503,21 +486,23 @@ void AccountView::buildSignIn() {
 
     connect(go, &QPushButton::clicked, this, &AccountView::attemptSignIn);
     connect(signInPassword_, &QLineEdit::returnPressed, this, &AccountView::attemptSignIn);
-    connect(signInEmail_, &QLineEdit::returnPressed, this, &AccountView::attemptSignIn);
+    connect(signInUser_, &QLineEdit::returnPressed, this, &AccountView::attemptSignIn);
 
     centre->addLayout(column);
     centre->addStretch(1);
     screens_->addWidget(page);
 
-    signInEmail_->setText(QString::fromStdString(accounts_.load().email));
+    // Prefill the username: it is not a secret, and the only thing worth
+    // typing here is the password.
+    signInUser_->setText(QString::fromStdString(accounts_.load().username));
 }
 
 void AccountView::attemptSignIn() {
-    if (!accounts_.verify(signInEmail_->text().toStdString(),
+    if (!accounts_.verify(signInUser_->text().toStdString(),
                           signInPassword_->text().toStdString())) {
         // One message for both causes: saying which half was wrong tells an
-        // unwanted guest whether the address is the right one.
-        signInError_->setText(QStringLiteral("That email and password don't match."));
+        // unwanted guest whether the username is the right one.
+        signInError_->setText(QStringLiteral("That username and password don't match."));
         signInPassword_->clear();
         signInPassword_->setFocus();
         return;

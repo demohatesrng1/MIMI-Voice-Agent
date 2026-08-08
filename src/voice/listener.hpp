@@ -117,8 +117,20 @@ public:
         // cost of the odd self-trigger when her own playback is loud. Raise
         // barge_in_rms back toward 0.055 if she starts cutting herself off.
         bool barge_in_on_speech = true;
-        float barge_in_rms = 0.045f;
-        std::chrono::milliseconds barge_in_hold{160};
+        // The absolute floor, not the threshold. Its job is only to stop a
+        // quiet room from triggering; the real test is barge_in_ratio.
+        float barge_in_rms = 0.030f;
+        // How far above her own voice yours has to be.
+        //
+        // A fixed level cannot be right: the correct number depends on how loud
+        // the speakers are, how big the room is and how far away you sit, and
+        // one constant tuned on one desk is wrong everywhere else -- too high
+        // and talking over her does nothing, too low and she cuts herself off.
+        // While she is speaking the microphone hears mostly *her*, so that
+        // level is measurable, and barge-in becomes "clearly louder than
+        // whatever she is doing right now" instead of a magic number.
+        float barge_in_ratio = 2.1f;
+        std::chrono::milliseconds barge_in_hold{140};
 
         int whisper_threads = 4;
     };
@@ -211,6 +223,9 @@ private:
     std::atomic<bool> speaking_{false};
     // How long the caller has been talking over her, on the spotter path.
     std::chrono::steady_clock::time_point loud_since_{};
+    // Her own voice bleeding back into the microphone, measured while she
+    // speaks. Zero means "not established yet". Audio-thread only.
+    float echo_floor_ = 0.0f;
     std::atomic<State> state_{State::Idle};
 
     std::deque<Job> jobs_;

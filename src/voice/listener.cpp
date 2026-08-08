@@ -415,14 +415,24 @@ void Listener::step_spotter(const float* frame, float rms) {
     // short tail so the room and the speaker have settled.
     if (speaking_.load(std::memory_order_relaxed)) {
         const auto now = std::chrono::steady_clock::now();
-        // Talking over her cuts her off. Anything quieter than the threshold is
-        // taken for her own voice in the room and ignored, so the timer resets
-        // and only sustained, deliberate speech gets through.
-        if (config_.barge_in && config_.barge_in_on_speech && rms >= config_.barge_in_rms) {
+        // What the microphone is picking up of her own playback. It settles
+        // within a few frames of her starting, and the time constant is slow
+        // enough that your voice cannot drag it up before the hold expires.
+        echo_floor_ = echo_floor_ <= 0.0f ? rms : echo_floor_ * 0.98f + rms * 0.02f;
+
+        // Talking over her cuts her off. The test is whether you are clearly
+        // louder than she is rather than louder than a constant, with the
+        // configured level surviving only as an absolute floor so a quiet room
+        // cannot trip it.
+        const float gate =
+            std::max(config_.barge_in_rms, echo_floor_ * config_.barge_in_ratio + 0.006f);
+        if (config_.barge_in && config_.barge_in_on_speech && rms >= gate) {
             if (loud_since_.time_since_epoch().count() == 0) loud_since_ = now;
             if (now - loud_since_ >= config_.barge_in_hold) {
-                log::info(kTag, "barge-in (spoken over)");
+                log::info(kTag, "barge-in (spoken over: {:.3f} over a {:.3f} floor)", rms,
+                          echo_floor_);
                 loud_since_ = {};
+                echo_floor_ = 0.0f;
                 muted_until_ = {};
                 speaking_.store(false, std::memory_order_relaxed);
                 if (on_barge_in_) on_barge_in_();
@@ -439,6 +449,9 @@ void Listener::step_spotter(const float* frame, float rms) {
         return;
     }
     loud_since_ = {};
+    // She has stopped: the next thing she says may be at a different level, in
+    // a room that has changed, so the floor is measured again from scratch.
+    echo_floor_ = 0.0f;
     if (muted_until_.time_since_epoch().count() != 0) {
         if (std::chrono::steady_clock::now() < muted_until_) {
             if (on_level_) on_level_(rms, 0.0f);

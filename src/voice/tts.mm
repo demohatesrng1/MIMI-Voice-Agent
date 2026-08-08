@@ -172,7 +172,8 @@ bool Speaker::start_voicevox() {
 bool Speaker::speak_voicevox(const std::string& text, std::uint64_t generation) {
     if (!impl_->voicevox_ready || !impl_->voicevox) return false;
 
-    auto wav = impl_->voicevox->synthesize(text);
+    std::vector<Mora> timeline;
+    auto wav = impl_->voicevox->synthesize(text, timeline);
     if (wav.empty()) return false;
 
     // afplay wants a file. Writing one costs a few ms against speech that takes
@@ -198,6 +199,15 @@ bool Speaker::speak_voicevox(const std::string& text, std::uint64_t generation) 
     }
     impl_->player.store(pid);
 
+    // Right after the spawn, so the mouth starts from the same instant the
+    // audio does. afplay takes a moment to open the device and reach the first
+    // sample; without allowing for it she mouths the sentence slightly early,
+    // which reads worse than being slightly late.
+    if (on_visemes_ && !timeline.empty()) {
+        constexpr double kPlaybackLatency = 0.09;  // measured against afplay
+        on_visemes_(timeline, kPlaybackLatency);
+    }
+
     std::thread([this, pid, generation, file_path] {
         int status = 0;
         ::waitpid(pid, &status, 0);
@@ -213,6 +223,8 @@ bool Speaker::speak_voicevox(const std::string& text, std::uint64_t generation) 
     }).detach();
     return true;
 }
+
+void Speaker::on_visemes(VisemeHandler handler) { on_visemes_ = std::move(handler); }
 
 void Speaker::speak(const std::string& text, std::function<void(bool)> on_finished) {
     if (text.empty()) {

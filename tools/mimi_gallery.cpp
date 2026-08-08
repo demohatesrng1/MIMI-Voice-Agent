@@ -199,7 +199,7 @@ int main(int argc, char** argv) {
         mimi::brain::Accounts accounts;
         const bool temporary = !accounts.exists();
         if (temporary) {
-            accounts.sign_up("you@example.com", "a password", "you", "You", "You");
+            accounts.sign_up("you", "a password", "You", "You");
         }
         auto* gate = new AccountView;
         gate->resize(880, 620);

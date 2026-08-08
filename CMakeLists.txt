@@ -208,6 +208,11 @@ if(MIMI_BUILD_TOOLS)
   add_executable(mimi_test tools/mimi_test.cpp)
   target_link_libraries(mimi_test PRIVATE mimi_brain)
 
+  # The way back into a locked account. The GUI gate has no reset of its own,
+  # and an assistant you cannot sign into is worse than one with no lock.
+  add_executable(mimi_account tools/mimi_account.cpp)
+  target_link_libraries(mimi_account PRIVATE mimi_brain)
+
   add_executable(mimi_route tools/mimi_route.cpp)
   target_link_libraries(mimi_route PRIVATE mimi_brain)
 endif()
@@ -217,6 +222,23 @@ endif()
 if(MIMI_BUILD_GUI)
   find_package(Qt6 6.5 REQUIRED COMPONENTS Widgets)
   qt_standard_project_setup()
+
+  # The 3D avatar. Rendered by three.js + three-vrm inside a Qt WebEngine page,
+  # because three-vrm already implements MToon, the spring-bone simulation, the
+  # expression manager and eye lookAt -- writing those four against Qt Quick 3D
+  # would be a rendering project rather than a feature. Optional in exactly the
+  # way VOICEVOX is: without WebEngine the app still builds and shows the 2D orb.
+  option(MIMI_BUILD_AVATAR "Build the 3D VRM avatar (needs Qt WebEngine)" ON)
+  set(MIMI_HAS_AVATAR OFF)
+  if(MIMI_BUILD_AVATAR)
+    find_package(Qt6 6.5 QUIET COMPONENTS WebEngineWidgets)
+    if(Qt6WebEngineWidgets_FOUND)
+      set(MIMI_HAS_AVATAR ON)
+      message(STATUS "  avatar      : Qt WebEngine ${Qt6WebEngineWidgets_VERSION}")
+    else()
+      message(STATUS "  avatar      : Qt WebEngine not found; using the 2D orb")
+    endif()
+  endif()
 
   qt_add_executable(mimi_app MACOSX_BUNDLE
     src/app/main.cpp
@@ -283,6 +305,23 @@ if(MIMI_BUILD_GUI)
 
   target_link_libraries(mimi_app PRIVATE Qt6::Widgets mimi_voice mimi_brain
     "-framework AppKit")
+
+  # The avatar's own sources and its web payload. The .vrm is deliberately NOT
+  # here: it is licensed for this user only, gitignored, and found on disk at
+  # runtime -- see AvatarScheme::findModel().
+  if(MIMI_HAS_AVATAR)
+    target_sources(mimi_app PRIVATE
+      src/ui/avatar_view.cpp
+      src/ui/avatar_scheme.cpp
+      src/ui/avatar_view.hpp      # Q_OBJECT, needs moc
+      src/ui/avatar_scheme.hpp)   # Q_OBJECT, needs moc
+    qt_add_resources(mimi_app "avatar"
+      PREFIX "/avatar"
+      BASE   "src/ui/web"
+      FILES  src/ui/web/index.html src/ui/web/avatar.bundle.js)
+    target_link_libraries(mimi_app PRIVATE Qt6::WebEngineWidgets)
+    target_compile_definitions(mimi_app PRIVATE MIMI_HAS_AVATAR)
+  endif()
 
   set_source_files_properties(src/ui/mac_window.mm src/ui/ambient_audio.mm PROPERTIES
     COMPILE_FLAGS "-fobjc-arc -std=c++20")
@@ -351,6 +390,26 @@ if(MIMI_BUILD_GUI)
     target_link_libraries(mimi_gallery PRIVATE Qt6::Widgets mimi_voice mimi_brain)
     target_compile_definitions(mimi_gallery PRIVATE
       MIMI_SRC_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+
+    # The avatar on its own, the way every other layer has a harness. Not part
+    # of mimi_gallery: that runs offscreen, and WebEngine needs a real GPU
+    # surface, so the two cannot share a process.
+    if(MIMI_HAS_AVATAR)
+      qt_add_executable(mimi_avatar
+        tools/mimi_avatar.cpp
+        src/ui/avatar_view.cpp
+        src/ui/avatar_scheme.cpp
+        src/ui/avatar_view.hpp
+        src/ui/avatar_scheme.hpp)
+      qt_add_resources(mimi_avatar "avatar_harness"
+        PREFIX "/avatar"
+        BASE   "src/ui/web"
+        FILES  src/ui/web/index.html src/ui/web/avatar.bundle.js)
+      # mimi_voice, not mimi_core: presence.hpp includes voice/listener.hpp for
+      # the State enum it is a superset of, which drags in onnxruntime's headers.
+      target_link_libraries(mimi_avatar PRIVATE Qt6::Widgets Qt6::WebEngineWidgets mimi_voice)
+      target_compile_definitions(mimi_avatar PRIVATE MIMI_HAS_AVATAR)
+    endif()
   endif()
 endif()
 
